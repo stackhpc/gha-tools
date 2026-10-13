@@ -145,7 +145,7 @@ def test_run_zizmor_passes_token(monkeypatch):
 
 @pytest.fixture
 def stub_update(monkeypatch):
-    calls = {}
+    calls = {"status": 0}
     monkeypatch.setattr(update, "read_actions", lambda org: [ActionEntry(f"a/a@{SHA_A}", None, 1)])
     monkeypatch.setattr(update, "walk", lambda walker, entries: None)
     monkeypatch.setattr(update, "check_versions", lambda walker, entries: None)
@@ -153,24 +153,46 @@ def stub_update(monkeypatch):
     monkeypatch.setattr(update, "write_final", lambda org, final: calls.setdefault("written", final))
     monkeypatch.setattr(update, "default_base", lambda: "merge-base-sha")
 
-    def fake_review_org(api, org, base):
-        calls["review"] = base
-        return 1
+    def fake_review_final(api, org, current, info, base):
+        assert "written" not in calls  # review happens before writing
+        calls["review"] = (current, base)
+        return calls["status"]
 
-    monkeypatch.setattr(update, "review_org", fake_review_org)
+    monkeypatch.setattr(update, "review_final", fake_review_final)
     return calls
 
 
-def test_update_writes_then_reviews_against_merge_base(stub_update):
+def test_update_reviews_against_merge_base_then_writes(stub_update):
+    assert update.update(None, "org") == 0
+    assert stub_update["review"] == ({f"a/a@{SHA_A}"}, "merge-base-sha")
+    assert stub_update["written"] == {f"a/a@{SHA_A}": {}}
+
+
+def test_update_does_not_write_if_review_fails(stub_update):
+    stub_update["status"] = 1
     assert update.update(None, "org") == 1
-    assert stub_update == {"written": {f"a/a@{SHA_A}": {}}, "review": "merge-base-sha"}
+    assert "review" in stub_update and "written" not in stub_update
 
 
 def test_update_explicit_base(stub_update):
     update.update(None, "org", base="v1.0")
-    assert stub_update["review"] == "v1.0"
+    assert stub_update["review"][1] == "v1.0"
 
 
 def test_update_no_review(stub_update):
     assert update.update(None, "org", do_review=False) == 0
     assert "review" not in stub_update and "written" in stub_update
+
+
+def test_update_vulnerable_leaves_files_untouched(org_files, reviewed, monkeypatch):
+    """End-to-end through the real review: a vulnerable addition means the
+    existing files are left as they were."""
+    org_files(["a/a@v1"])
+    before = (open("org.final.txt").read(), open("org.final.json").read())
+    monkeypatch.setattr(update, "read_actions", lambda org: [])
+    monkeypatch.setattr(update, "walk", lambda walker, entries: None)
+    monkeypatch.setattr(update, "check_versions", lambda walker, entries: None)
+    monkeypatch.setattr(update, "build_final", lambda walker, entries, org: {"a/a@v1": {}, "vuln/new@v1": {}})
+    monkeypatch.setattr(review, "final_at", lambda org, base: {"a/a@v1"})
+    assert update.update(None, "org", base="main") == 1
+    assert (open("org.final.txt").read(), open("org.final.json").read()) == before

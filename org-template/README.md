@@ -45,15 +45,17 @@ All `gha` commands below are run from the root of this repository. All except
     gha update @ORG@
     ```
 
-    This walks all dependencies of the entries in `@ORG@.actions.txt` and rewrites
-    `@ORG@.final.txt` and `@ORG@.final.json`. It fails if any entry has no ref, or
-    if any dependency cannot be found (as the allowlist would then be incomplete).
+    This walks all dependencies of the entries in `@ORG@.actions.txt` to build the
+    new allowlist. It fails if any entry has no ref, or if any dependency cannot
+    be found (as the allowlist would then be incomplete).
 
-    It then reviews the entries added to `@ORG@.final.txt` compared to the
-    merge-base of `HEAD` and `origin/main`, i.e. what a PR will be compared against
-    (use `--base GIT_REF` to change this, or `--no-review` to skip the review) - see
-    [Reviewing](#reviewing). It **exits non-zero if any added entry is known to be
-    vulnerable**. The files are written regardless, so you can see what changed.
+    It then reviews the entries which would be added to `@ORG@.final.txt` compared
+    to the merge-base of `HEAD` and `origin/main`, i.e. what a PR will be compared
+    against (use `--base GIT_REF` to change this, or `--no-review` to skip the
+    review) - see [Reviewing](#reviewing). It **exits non-zero if any added entry
+    is known to be vulnerable**, without writing anything.
+
+    Otherwise it rewrites `@ORG@.final.txt` and `@ORG@.final.json`.
 
 3. Commit all three files and open a PR.
 

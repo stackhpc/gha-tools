@@ -192,6 +192,12 @@ def review_org(api: GitHubAPI, org: str, base: Optional[str] = None) -> int:
     since that git ref. Returns an exit status: 1 if any reviewed entry is
     known-vulnerable."""
     current, info = read_final(org)
+    return review_final(api, org, current, info, base)
+
+
+def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: Optional[str] = None) -> int:
+    """As review_org, but for final.txt entries and final.json info which
+    have not necessarily been written yet."""
     removed: set[str] = set()
     if base is None:
         to_review = current

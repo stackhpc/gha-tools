@@ -12,8 +12,8 @@ pins a version of this package. Usage is documented in that repo's README; see
 ## Commands
 
 - `gha update ORG`: walk all dependencies of the entries in `ORG.actions.txt`,
-  write `ORG.final.txt` (the allowlist) and `ORG.final.json` (provenance), then
-  review the entries added since a git ref.
+  review the entries added since a git ref, then write `ORG.final.txt` (the
+  allowlist) and `ORG.final.json` (provenance) if the review passes.
 - `gha review ORG|ACTION@REF`: review allowlist entries (known vulnerabilities,
   weak refs, mutability, Zizmor findings).
 - `gha fix ORG REPO ACTION[@REF]`: clone a repo and rewrite its `uses:` of an
@@ -102,6 +102,10 @@ with `--resume`.
    the merge-base of `HEAD` and `origin/main`. The base `ORG.final.txt` is read
    with `git show BASE:./ORG.final.txt`; if it doesn't exist there, every entry
    is treated as added.
+   This reviews the new allowlist in memory, before anything is written. **If
+   the review fails, `ORG.final.txt` and `ORG.final.json` are not written**, so
+   a known-vulnerable entry never reaches them.
+6. `write_final` writes `ORG.final.txt` and `ORG.final.json`.
 
 ### `gha review`
 

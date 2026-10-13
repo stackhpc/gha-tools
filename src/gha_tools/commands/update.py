@@ -1,4 +1,4 @@
-"""`gha update`: regenerate <org>.final.{txt,json} from <org>.actions.txt, then review what was added."""
+"""`gha update`: regenerate <org>.final.{txt,json} from <org>.actions.txt, reviewing what was added first."""
 
 from __future__ import annotations
 
@@ -10,13 +10,14 @@ from ..allowlist import (
 )
 from ..github import GitHubAPI
 from ..walker import Walker
-from .review import review_org
+from .review import review_final
 
 log = logging.getLogger(__name__)
 
 
 def update(api: GitHubAPI, org: str, base: Optional[str] = None, do_review: bool = True) -> int:
-    """Returns an exit status: non-zero if the review fails."""
+    """Returns an exit status: non-zero if the review fails, in which case
+    the files are not written."""
     entries = read_actions(org)
     log.info(f"Walking dependencies of {len(entries)} entries ...")
     walker = Walker(":memory:", api=api, org=org)
@@ -24,9 +25,12 @@ def update(api: GitHubAPI, org: str, base: Optional[str] = None, do_review: bool
     check_versions(walker, entries)
 
     final = build_final(walker, entries, org)
+    if do_review:
+        status = review_final(api, org, set(final), final, base or default_base())
+        if status != 0:
+            log.error(f"Review failed: NOT writing {final_txt_path(org)} or {final_json_path(org)}")
+            return status
+
     write_final(org, final)
     log.info(f"Wrote {len(final)} entries to {final_txt_path(org)} and {final_json_path(org)}")
-
-    if not do_review:
-        return 0
-    return review_org(api, org, base or default_base())
+    return 0
