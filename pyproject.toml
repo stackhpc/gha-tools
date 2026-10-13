@@ -1,0 +1,29 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "gha-tools"
+version = "0.1.0"
+description = "Tools to define an allowlist of GitHub Actions for an organisation, and update repos to match"
+readme = "README.md"
+requires-python = ">=3.9"
+dependencies = [
+    "requests",
+    "pyyaml",
+    "packaging",
+    "zizmor",
+]
+
+[project.optional-dependencies]
+test = ["pytest"]
+
+[project.scripts]
+gha = "gha_tools.cli:main"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/gha_tools"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["tests"]

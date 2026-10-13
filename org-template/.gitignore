@@ -1,0 +1,5 @@
+# gha scan resume database, and local venv
+*.db
+*.db-shm
+*.db-wal
+venv/

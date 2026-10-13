@@ -1,0 +1,66 @@
+rules:
+  anonymous-definition:
+    disable: true
+  #archived-uses
+  artipacked:
+    disable: true
+  bot-conditions:
+    disable: true
+  cache-poisoning:
+    disable: true
+  concurrency-limits:
+    disable: true
+  dangerous-triggers:
+    disable: true
+  dependabot-cooldown:
+    disable: true
+  #dependabot-execution:
+  excessive-permissions:
+    disable: true
+  forbidden-uses:
+    disable: true
+  github-app:
+    disable: true
+  github-env:
+    disable: true
+  hardcoded-container-credentials:
+    disable: true
+  #impostor-commit
+  insecure-commands:
+    disable: true
+  #known-vulnerable-actions
+  misfeature:
+    disable: true
+  obfuscation:
+    disable: true
+  overprovisioned-secrets:
+    disable: true
+  #ref-confusion
+  #ref-version-mismatch
+  secrets-inherit:
+    disable: true
+  secrets-outside-env:
+    disable: true
+  self-hosted-runner:
+    disable: true
+  #stale-action-refs
+  superfluous-actions:
+    disable: true
+  template-injection:
+    disable: true
+  undocumented-permissions:
+    disable: true
+  #unpinned-images
+  #unpinned-tools
+  unpinned-uses:
+    config:
+      policies:
+        actions/*: any
+  unredacted-secrets:
+    disable: true
+  unsound-condition:
+    disable: true
+  unsound-contains:
+    disable: true
+  use-trusted-publishing:
+    disable: true
