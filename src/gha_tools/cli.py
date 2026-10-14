@@ -28,26 +28,34 @@ def main():
     parser = ArgumentParser()
     subparsers = parser.add_subparsers(help='subcommand help', required=True)
 
-    parser_scan = subparsers.add_parser('scan', help='scan an org for used actions')
+    parser_scan = subparsers.add_parser(
+        'scan', help='scan an org for used actions',
+        description="Find every action used by the active workflows in an org's repos.")
     parser_scan.set_defaults(task="scan", needs_token=True)
     parser_scan.add_argument('org', help="name of GitHub organisation")
     parser_scan.add_argument('--repo', help="name of repository (for dev)")
     parser_scan.add_argument('--resume', action='store_true', help="restart failed scan")
 
     parser_blocked = subparsers.add_parser(
-        'blocked', help='report workflows from the last scan which are not allowed by ORG.final.txt')
+        'blocked', help='report workflows from the last scan which are not allowed by ORG.final.txt',
+        description='Report workflows from the last scan which are not allowed by ORG.final.txt.')
     parser_blocked.set_defaults(task="blocked", needs_token=False)
     parser_blocked.add_argument('org', help="name of GitHub organisation")
 
     parser_update = subparsers.add_parser(
-        'update', help='regenerate ORG.final.{txt,json} from ORG.actions.txt and review additions')
+        'update', help='regenerate ORG.final.{txt,json} from ORG.actions.txt and review additions',
+        description='Walk all dependencies of the entries in ORG.actions.txt, review the entries added '
+                    'since a git ref, then update the allowlist ORG.final.txt and the provenance '
+                    'information in ORG.final.json if the review passes.')
     parser_update.set_defaults(task="update", needs_token=True)
     parser_update.add_argument('org', help="name of GitHub organisation")
     parser_update.add_argument(
         '--base', help="git ref to review changes against, default: merge-base of HEAD and origin/main")
     parser_update.add_argument('--no-review', action='store_true', help="don't review added entries")
 
-    parser_fix = subparsers.add_parser('fix', help='fix a repo to use an allowlisted action ref')
+    parser_fix = subparsers.add_parser(
+        'fix', help='fix a repo to use an allowlisted action ref',
+        description='Clone a repo and rewrite its `uses:` of an action to the allowlisted ref.')
     parser_fix.set_defaults(task="fix", needs_token=False)
     parser_fix.add_argument('org', help="name of GitHub organisation")
     parser_fix.add_argument('repo', help="name of repo to fix")
@@ -55,7 +63,10 @@ def main():
         'action', help="ACTION[@REF]; REF defaults to the only one for ACTION in ORG.actions.txt")
     parser_fix.add_argument('--path', '-p', default="~", help="path to clone repo to, defaults to ~")
 
-    parser_review = subparsers.add_parser('review', help='review ORG.final.txt, or a selected action')
+    parser_review = subparsers.add_parser(
+        'review', help='review ORG.final.txt, or a selected action',
+        description='Review all allowlist entries in ORG.final.txt (optionally only those added since '
+                    '--base), or a specific action@ref. Transitive dependencies are included.')
     parser_review.set_defaults(task="review", needs_token=True)
     parser_review.add_argument('target', help="name of GitHub organisation, or action@ref")
     parser_review.add_argument('--base', help="git ref: only review entries added to ORG.final.txt since this")
