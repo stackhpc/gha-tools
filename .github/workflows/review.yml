@@ -1,0 +1,60 @@
+name: Review allowlist
+
+# Reusable workflow for an organisation's allowlist repo (e.g. stackhpc/gha-stackhpc).
+# Runs `gha review ORG` over every entry in ORG.final.txt, and fails if any
+# are known-vulnerable. Example caller:
+#
+#   on:
+#     schedule:
+#       - cron: "0 3 * * *"
+#   workflow_dispatch:
+#   permissions:
+#     contents: read
+#   jobs:
+#     review:
+#       uses: stackhpc/gha-tools/.github/workflows/review.yml@<sha>
+#       with:
+#         org: stackhpc
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: Name of the GitHub organisation, i.e. the prefix of ORG.final.txt
+        type: string
+        required: true
+      requirements:
+        description: Requirements file in the caller repo which pins gha-tools
+        type: string
+        default: requirements.txt
+
+permissions:
+  contents: read
+
+jobs:
+  review:
+    name: Review ${{ inputs.org }} allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+        with:
+          python-version: "3.x"
+
+      - name: Install gha-tools
+        env:
+          REQUIREMENTS: ${{ inputs.requirements }}
+        run: |
+          python -m venv "$RUNNER_TEMP/venv"
+          "$RUNNER_TEMP/venv/bin/pip" install -r "$REQUIREMENTS"
+          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+
+      # No --base: review every entry. gha exits 1 if any are known-vulnerable.
+      - name: Review allowlist
+        env:
+          ORG: ${{ inputs.org }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gha review "$ORG"
