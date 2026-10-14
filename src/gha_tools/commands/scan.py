@@ -6,8 +6,10 @@ import json
 import logging
 from typing import Optional
 
+from ..allowlist import FINAL_KINDS, is_github_owned
 from ..discovery import get_repo_workflows, list_org_repos
 from ..github import GitHubAPI
+from ..identity import is_org_owned
 from ..walker import Walker
 
 log = logging.getLogger(__name__)
@@ -40,9 +42,49 @@ def scan(api: GitHubAPI, org: str, repo: Optional[str] = None, resume: bool = Fa
     with open(f"{org}.calls.json", "w") as f_calls:
         json.dump(calls_output, f_calls, indent=2)
 
+    print(format_actions_txt(walker, org), end="")
+
+
+def format_actions_txt(walker: Walker, org: str) -> str:
+    """Text for `ORG.actions.txt`: every non-GitHub action/reusable workflow
+    (including the org's own) called directly by a workflow. Things only
+    called by other actions/reusable workflows are left out, as `gha update`
+    finds them by walking the entries which call them.
+    Everything from the marker line onwards can be copied into the file."""
+    nodes = walker.export_nodes()
+    roots = {n["node_id"]: n for n in nodes if n["kind"] == "workflow_root"}
+
+    def called_remotely_by_root(node: dict) -> bool:
+        # A `uses: ./path` is resolved to the calling repo and ref, so is
+        # indistinguishable from (and treated as) a call into its own repo at
+        # that ref. Those are always allowed, so are left out.
+        return any(
+            (roots[c]["owner"], roots[c]["repo"], roots[c]["ref"]) != (node["owner"], node["repo"], node["ref"])
+            for c in walker.callers_of(node["node_id"]) if c in roots
+        )
+
+    entries = []
+    for node in nodes:
+        if node["kind"] not in FINAL_KINDS or is_github_owned(node["owner"]):
+            continue
+        if not called_remotely_by_root(node):
+            continue
+        internal = is_org_owned(node["owner"], org)
+        comments = []
+        if node["ref_version"]:
+            comments.append(node["ref_version"])
+        if node["ref_source"] != "is_sha" and not internal and node["resolved_sha"]:
+            comments.append(f"(not a SHA: currently {node['resolved_sha']})")
+        entries.append((internal, node["node_id"], " ".join(comments)))
+
+    lines = ["", f"# --- Start of {org}.actions.txt content: copy from here ---"]
+    for internal, uses, comment in sorted(entries):
+        lines.append(f"{uses}," + (f" # {comment}" if comment else ""))
+    return "\n".join(lines) + "\n"
+
 
 def summarise(walker: Walker, org: str) -> tuple[dict, dict]:
-    """Returns (actions, calls) for all actions from outside org:
+    """Returns (actions, calls) for all actions and reusable workflows from outside org:
     actions: {address: {ref: {repos, sha, source, version}}}
     calls:   {address@ref: [call chain, ...]}, each chain a list of node_ids
              from a root workflow down to (but excluding) the action itself
@@ -51,7 +93,7 @@ def summarise(walker: Walker, org: str) -> tuple[dict, dict]:
     calls_output: dict = {}
 
     for node in walker.export_nodes():
-        if node["kind"] == "action" and node["owner"] != org:
+        if node["kind"] in FINAL_KINDS and node["owner"] != org:
             ref = node["ref"]
             chains = walker.call_chains_to(node["node_id"])
 
