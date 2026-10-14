@@ -35,8 +35,9 @@ def test_format_actions_txt(tmp_path):
     w.run()
 
     out = format_actions_txt(w, "org").splitlines()
-    assert out[0].startswith("# --- Start of org.actions.txt")
-    assert out[1:] == [
+    assert out[0] == ""
+    assert out[1].startswith("# --- Start of org.actions.txt")
+    assert out[2:] == [
         f"foo/bar@v1, # v1 (not a SHA: currently {sha(1)})",
         "org/shared/.github/workflows/w.yml@main,",
     ]  # no local ./.github/actions/setup; no deep/dep: only called via org/shared, so found by `gha update`

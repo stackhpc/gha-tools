@@ -10,6 +10,7 @@ import os
 import sys
 from argparse import ArgumentParser
 
+from .commands.blocked import blocked
 from .commands.fix import fix_repo
 from .allowlist import AllowlistError
 from .commands.review import review_org, review_single
@@ -32,6 +33,11 @@ def main():
     parser_scan.add_argument('org', help="name of GitHub organisation")
     parser_scan.add_argument('--repo', help="name of repository (for dev)")
     parser_scan.add_argument('--resume', action='store_true', help="restart failed scan")
+
+    parser_blocked = subparsers.add_parser(
+        'blocked', help='report workflows from the last scan which are not allowed by ORG.final.txt')
+    parser_blocked.set_defaults(task="blocked", needs_token=False)
+    parser_blocked.add_argument('org', help="name of GitHub organisation")
 
     parser_update = subparsers.add_parser(
         'update', help='regenerate ORG.final.{txt,json} from ORG.actions.txt and review additions')
@@ -65,6 +71,9 @@ def main():
     try:
         if args.task == "scan":
             scan(api, args.org, args.repo, args.resume)
+
+        elif args.task == "blocked":
+            sys.exit(blocked(args.org))
 
         elif args.task == "update":
             sys.exit(update(api, args.org, args.base, not args.no_review))
