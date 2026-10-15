@@ -217,6 +217,24 @@ manually when happy.
 3. Run `gha update ORG`.
 4. Paste `ORG.final.txt` into the org's Actions settings.
 
+### Scheduled review workflow
+
+This repo provides a reusable workflow, `.github/workflows/review.yml`, which an organisation repo
+can call to run `gha review ORG` over every entry in `ORG.final.txt`. As allowlisted actions
+can be found to be vulnerable after they were added, running it on a schedule catches that
+without anyone touching the allowlist. The job fails if any entry is known-vulnerable.
+
+An example caller (which runs nightly, on merge to main and on demand) is in the comments at the
+top of the workflow. The inputs are:
+
+- `org` (required): the organisation name, i.e. the prefix of `ORG.final.txt`.
+- `requirements` (default `requirements.txt`): the file in the calling repo which pins the
+  version of `gha-tools` to install, so the review runs the same version as local use.
+- Secret `slack_webhook_url` (optional): a Slack incoming webhook. If given, a message is
+  posted when the job fails, for any reason including install errors. Nothing is posted on success.
+
+Unlike `gha update` this reviews all entries rather than only those added on a branch.
+
 ## Actions file format
 
 One `owner/repo[/path]@ref` per line, e.g.:
