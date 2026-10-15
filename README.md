@@ -365,9 +365,5 @@ outputs saved next to them - see `tests/test_regression.py`.
 
 ## TODO
 
-- `gha review` and `gha update`/`gha scan` find an action's metadata file differently:
-  `walker.py` tries `action.yml` then `action.yaml`, while `commands/review.py`
-  lists the directory and requires exactly one file starting `action.y`, exiting
-  otherwise. These should be unified.
 - Check if the API can show whether ORG.final.txt is out of date with the
   actual allowlist.
