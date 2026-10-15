@@ -58,7 +58,53 @@ This section provides more details on commands, to help organisation allowlist m
 
 ### Update subcommand
 
-TODO update
+Regenerate `ORG.final.txt` and `ORG.final.json` from `ORG.actions.txt`, reviewing any entries
+which have been added.
+
+Usage:
+
+```shell
+usage: gha update [--base BASE] [--no-review] ORG
+```
+
+Steps, in order:
+1. Parse `ORG.actions.txt`. All invalid lines are reported together as an error (no ref, or not a
+   remote action/reusable workflow, e.g. `./local` or `docker://`). Warnings are raised for
+   GitHub-owned entries and non-SHA refs on external entries.
+2. Walk the dependencies of every entry using an in-memory [walker](#the-walker). Unlike `scan`
+   there is no `--resume`, so a failure part way through means starting again.
+3. Check any `# vX.Y.Z` comments against the tags found for the SHA (warning only).
+4. Build the final entries and, unless `--no-review`, review those added since `--base`
+   (see [Review subcommand](#review-subcommand)).
+5. Write both files only if the review passed.
+
+Non-obvious behaviour:
+- **Nothing is written on failure.** If any dependency can't be resolved, or the review finds a
+  known-vulnerable action, the existing `final.*` files are left untouched and the exit status
+  is non-zero. Review *warnings* (unpinned refs etc.) do not block writing.
+- **Unresolved dependencies are fatal here**, unlike in `scan` where they become leaves. The
+  walk is attempted up to 3 times to ride out transient API errors, then any node not `done`
+  is reported along with the call chain(s) from `actions.txt` which led to it, as the
+  allowlist would otherwise be silently incomplete.
+- **Only added entries are reviewed.** The previous allowlist is read from `ORG.final.txt` at
+  the `--base` git ref (default: merge-base of HEAD and `origin/main`, falling back to `HEAD`
+  with a warning), so the working tree's uncommitted changes count as additions. If the file
+  doesn't exist at that ref, or there is no git history, everything is treated as added and
+  reviewed. An invalid `--base` is an error. Entries *removed* since the base are listed
+  so they can be deleted by hand from the GitHub UI - `gha` cannot update the org setting.
+- **`--no-review` skips the vulnerability check entirely**, not just the diff against `--base`.
+- **Entries are literal.** `final.txt` contains each node exactly as written after `uses:`
+  (the same action at two different refs gives two entries); refs are never rewritten
+  to SHAs. Only `action` and `reusable_workflow` nodes are included; GitHub-owned and
+  ORG-owned nodes are walked (so their dependencies are found) but omitted from the output.
+- **`final.json` is provenance.** Each entry has its `kind`, resolved `sha`, `version` (most
+  specific tag on the SHA), `ref_source` (`is_sha`, `tag` or `branch`), whether it is a
+  `root` (listed directly in `actions.txt`) and every call `chains` leading to it.
+  Chains stop at the nearest root, and cycles are skipped. `gha fix` and `gha review` read
+  this file, so run `update` after changing `actions.txt` before using them.
+- Both outputs are sorted, so diffs in git only show real changes. `final.txt` uses the
+  trailing-comma format the GitHub UI accepts.
+- A GitHub token is required (`needs_token`) as the walk and review use the API.
 
 ### Scan subcommand
 
