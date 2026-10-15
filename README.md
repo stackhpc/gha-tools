@@ -135,7 +135,7 @@ matters is which workflows *will* be run: if `foo/bar@v2` is allowlisted and a d
 branch uses `foo/bar@v1`, that branch needs updating, and an old feature branch is then
 fixed by rebasing or merging on/from the default branch. So when finding workflows
 first the default branch is checked for the path; if this exists the workflow source is
-extracted from this branch. Otherwise branches are searched in alphabetical order and
+extracted from this branch. Otherwise branches are searched shortest name first (then alphabetically) and
 the workflow source taken from the first branch on which the path exists.
 
 Finding all actions requires a recursive approach:
@@ -369,7 +369,5 @@ outputs saved next to them - see `tests/test_regression.py`.
   `walker.py` tries `action.yml` then `action.yaml`, while `commands/review.py`
   lists the directory and requires exactly one file starting `action.y`, exiting
   otherwise. These should be unified.
-- `discovery.find_workflows` checks other branches in the order the GitHub API
-  returns them (alphabetical); shortest branch name first might be better.
 - Check if the API can show whether ORG.final.txt is out of date with the
   actual allowlist.

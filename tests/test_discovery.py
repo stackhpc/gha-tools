@@ -108,3 +108,12 @@ def test_find_workflows_default_branch_then_other_branches(monkeypatch):
     assert len(api.graphql_queries) == 4
     assert all(q.count("object(") <= 3 for q in api.graphql_queries)
     assert "b:.github/workflows/other.yml" not in "".join(api.graphql_queries[2:])
+
+
+def test_find_workflows_tries_shortest_branch_first():
+    api = FakeAPI(
+        paginated={"repos/o/r/branches": [{"name": n} for n in ["feature/x", "release", "dev", "bb", "aa"]]},
+        branch_files={f"{b}:.github/workflows/ci.yml" for b in ["feature/x", "release", "dev", "bb", "aa"]},
+    )
+    found = discovery.find_workflows(api, "o", "r", [".github/workflows/ci.yml"])
+    assert found == [("o", "r", ".github/workflows/ci.yml", "aa")]  # shortest, then alphabetical

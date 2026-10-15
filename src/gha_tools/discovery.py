@@ -53,7 +53,7 @@ def get_active_workflows(api: GitHubAPI, org: str, repo_name: str) -> list[str]:
 def find_workflows(api: GitHubAPI, org: str, repo_name: str, paths: list[str]) -> list[tuple]:
     """Find a branch for all specified workflow paths. Returns a list of
     (org, repo_name, path, branch_name) tuples, where branch_name may be None for
-    the default branch. Note this does NOT find all content-unique workflows,
+    the default branch. Other branches are tried shortest name first. Note this does NOT find all content-unique workflows,
     just a "representative" for each path.
     """
 
@@ -69,7 +69,10 @@ def find_workflows(api: GitHubAPI, org: str, repo_name: str, paths: list[str]) -
     # (branch, missing path) combination in one (or a few, chunked) GraphQL
     # queries via aliasing
     if missing_paths:
-        branches = [r["name"] for r in api.get_paginated(f"repos/{org}/{repo_name}/branches")]
+        # Shortest names first (then alphabetical), as short names are likelier to be
+        # long-lived branches like "main" or "dev" rather than e.g. "feature/foo-bar".
+        branches = sorted((r["name"] for r in api.get_paginated(f"repos/{org}/{repo_name}/branches")),
+                          key=lambda name: (len(name), name))
         combos = [(b, p) for b in branches for p in sorted(missing_paths)]
         for i in range(0, len(combos), GRAPHQL_BATCH_SIZE):
             if not missing_paths:
