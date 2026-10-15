@@ -45,12 +45,10 @@ def main():
     parser_update = subparsers.add_parser(
         'update', help='regenerate ORG.final.{txt,json} from ORG.actions.txt and review additions',
         description='Walk all dependencies of the entries in ORG.actions.txt, review the entries added '
-                    'since a git ref, then update the allowlist ORG.final.txt and the provenance '
+                    'since the merge-base of HEAD and origin/main, then update the allowlist ORG.final.txt and the provenance '
                     'information in ORG.final.json if the review passes.')
     parser_update.set_defaults(task="update", needs_token=True)
     parser_update.add_argument('org', help="name of GitHub organisation")
-    parser_update.add_argument(
-        '--base', help="git ref to review changes against, default: merge-base of HEAD and origin/main")
     parser_update.add_argument('--no-review', action='store_true', help="don't review added entries")
 
     parser_fix = subparsers.add_parser(
@@ -87,7 +85,7 @@ def main():
             sys.exit(blocked(args.org))
 
         elif args.task == "update":
-            sys.exit(update(api, args.org, args.base, not args.no_review))
+            sys.exit(update(api, args.org, not args.no_review))
 
         elif args.task == "fix":
             fix_repo(args.org, args.repo, args.action, args.path)

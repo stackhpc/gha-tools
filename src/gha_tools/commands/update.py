@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Optional
 
 from ..allowlist import (
     build_final, check_versions, default_base, final_json_path, final_txt_path, read_actions, walk, write_final,
@@ -15,7 +14,7 @@ from .review import review_final
 log = logging.getLogger(__name__)
 
 
-def update(api: GitHubAPI, org: str, base: Optional[str] = None, do_review: bool = True) -> int:
+def update(api: GitHubAPI, org: str, do_review: bool = True) -> int:
     """Returns an exit status: non-zero if the review fails, in which case
     the files are not written."""
     entries = read_actions(org)
@@ -26,7 +25,7 @@ def update(api: GitHubAPI, org: str, base: Optional[str] = None, do_review: bool
 
     final = build_final(walker, entries, org)
     if do_review:
-        status = review_final(api, org, set(final), final, base or default_base())
+        status = review_final(api, org, set(final), final, default_base())
         if status != 0:
             log.error(f"Review failed: NOT writing {final_txt_path(org)} or {final_json_path(org)}")
             return status

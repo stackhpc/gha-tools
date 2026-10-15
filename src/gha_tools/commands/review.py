@@ -213,7 +213,7 @@ def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: 
         print("\nAdded entries:" if to_review else "\nNo added entries.")
         for uses in sorted(to_review):
             print(f"  + {uses}")
-        print("\nRemoved entries (delete these from the allowlist in the GitHub UI):" if removed else "\nNo removed entries.")
+        print("\nRemoved entries (these are dropped when ORG.final.txt is pasted into the GitHub UI):" if removed else "\nNo removed entries.")
         for uses in sorted(removed):
             print(f"  - {uses}")
     if vulnerable:

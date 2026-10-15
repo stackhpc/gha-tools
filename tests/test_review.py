@@ -96,7 +96,7 @@ def test_review_org_base_only_reviews_added(org_files, reviewed, monkeypatch, ca
     out = capsys.readouterr().out
     assert "Comparing against main: 1 added, 1 removed" in out
     assert "Added entries:\n  + b/b@v2\n" in out
-    assert "Removed entries (delete these from the allowlist in the GitHub UI):\n  - gone/g@v0\n" in out
+    assert "Removed entries (these are dropped when ORG.final.txt is pasted into the GitHub UI):\n  - gone/g@v0\n" in out
 
 
 def test_review_org_base_fails_if_added_vulnerable(org_files, reviewed, monkeypatch):
@@ -174,11 +174,6 @@ def test_update_does_not_write_if_review_fails(stub_update):
     assert "review" in stub_update and "written" not in stub_update
 
 
-def test_update_explicit_base(stub_update):
-    update.update(None, "org", base="v1.0")
-    assert stub_update["review"][1] == "v1.0"
-
-
 def test_update_no_review(stub_update):
     assert update.update(None, "org", do_review=False) == 0
     assert "review" not in stub_update and "written" in stub_update
@@ -194,5 +189,5 @@ def test_update_vulnerable_leaves_files_untouched(org_files, reviewed, monkeypat
     monkeypatch.setattr(update, "check_versions", lambda walker, entries: None)
     monkeypatch.setattr(update, "build_final", lambda walker, entries, org: {"a/a@v1": {}, "vuln/new@v1": {}})
     monkeypatch.setattr(review, "final_at", lambda org, base: {"a/a@v1"})
-    assert update.update(None, "org", base="main") == 1
+    assert update.update(None, "org") == 1
     assert (open("org.final.txt").read(), open("org.final.json").read()) == before
