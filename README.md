@@ -158,10 +158,9 @@ where TARGET may be either:
 - The org name to review actions from `ORG.final.txt`
 - `action@ref` to review a specific action
 
-If target is an ORG, `--base` may be used to restrict reviews to only entries added to `ORG.final.txt`
-since the given git ref. When called by `gha update` the default is the merge-base of HEAD and origin/main,
-so only changes made on your branch (including uncommitted changes) vs main are reviewed. Otherwise
-all actions in `ORG.final.txt` are reviewed.
+If target is an ORG, `--base` may be used to restrict reviews to only changes to `ORG.final.txt`
+since the given git ref. This is used internally by [gha update](#update-subcommand) - see comments
+there. Otherwise all actions in `ORG.final.txt` are reviewed.
 
 In either case the review includes transitive dependencies of directly-referenced actions/workflows.
 
