@@ -11,6 +11,17 @@ This README covers:
 - How to use `gha` for other tasks
 - How `gha` works and how to develop it.
 
+## Contents
+
+- [Overview](#overview)
+- [Command summary](#command-summary)
+- [Command details](#command-details)
+- [Setting up an organisation repo](#setting-up-an-organisation-repo)
+- [Actions file format](#actions-file-format)
+- [How it works](#how-it-works)
+- [Development](#development)
+- [TODO](#todo)
+
 ## Overview
 
 The basic concept is that we want to define an allowlist in the format required by the
