@@ -78,7 +78,7 @@ from typing import Optional
 
 import yaml
 
-from .github import GitHubAPI, NotFound, Transient
+from .github import GitHubAPI, NotFound, Transient, get_action_metadata
 from .identity import (
     NodeIdentity, is_full_sha, is_local_uses, is_org_owned, local_identity, resolve_uses, root_identity,
     tag_specificity,
@@ -340,25 +340,8 @@ class Walker:
             return workflow_style_children(doc)
 
         if ident.kind == "action":
-            path = ident.path
-            if path.endswith((".yml", ".yaml")):
-                candidates = [path]
-            else:
-                base = path.rstrip("/")
-                candidates = [
-                    f"{base}/action.yml".lstrip("/"),
-                    f"{base}/action.yaml".lstrip("/"),
-                ]
-            last_err: Optional[Exception] = None
-            for candidate in candidates:
-                try:
-                    text = self.api.get_file_text(ident.owner, ident.repo, candidate, ident.ref)
-                    doc = yaml.safe_load(text) or {}
-                    return composite_action_children(doc)
-                except NotFound as e:
-                    last_err = e
-                    continue
-            raise last_err or NotFound(f"no action.yml/yaml for {ident.node_id}")
+            text = get_action_metadata(self.api, ident.owner, ident.repo, ident.path, ident.ref)
+            return composite_action_children(yaml.safe_load(text) or {})
 
         raise NotFound(f"unhandled kind {ident.kind} for {ident.node_id}")
 

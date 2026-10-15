@@ -131,3 +131,19 @@ class GitHubAPI:
             if e.status == 404:
                 return None
             raise
+
+
+def get_action_metadata(api: GitHubAPI, owner: str, repo: str, path: str, ref: str) -> str:
+    """Text of an action's metadata file, which is action.yml, or action.yaml if
+    that doesn't exist (as GitHub does). path is the action's directory, or the
+    metadata file itself. Raises NotFound if there isn't one.
+
+    See https://docs.github.com/en/actions/reference/workflows-and-actions/metadata-syntax
+    """
+    if path.endswith((".yml", ".yaml")):
+        return api.get_file_text(owner, repo, path, ref)
+    base = path.rstrip("/")
+    try:
+        return api.get_file_text(owner, repo, f"{base}/action.yml".lstrip("/"), ref)
+    except NotFound:
+        return api.get_file_text(owner, repo, f"{base}/action.yaml".lstrip("/"), ref)

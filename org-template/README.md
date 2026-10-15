@@ -9,6 +9,8 @@ workflows which are either:
 This repository defines the allowlist and uses the `gha` [tool](https://github.com/stackhpc/gha-tools)
 to maintain it.
 
+To see which actions and reusable workflows are allowed, see [@ORG@.final.txt](./@ORG@.final.txt).
+
 > [!IMPORTANT]
 > The allowlist in GitHub settings must be manually updated by an organisation admin when the allowlist
 > here is changed. The permissions to automate that are considered too critical to expose.

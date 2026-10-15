@@ -6,7 +6,7 @@ import json
 import pytest
 import requests
 
-from gha_tools.github import GitHubAPI, GitHubAPIError, NotFound, Transient
+from gha_tools.github import GitHubAPI, GitHubAPIError, NotFound, Transient, get_action_metadata
 
 
 def response(status=200, body=None, headers=None, url="https://api.github.com/x"):
@@ -141,3 +141,34 @@ def test_graphql_errors_raise():
     api, _ = api_with({("POST", url): response(200, {"errors": [{"message": "bad"}]})})
     with pytest.raises(GitHubAPIError):
         api.graphql("query { x }")
+
+
+def _file(text):
+    return response(200, {"encoding": "base64", "content": base64.b64encode(text.encode()).decode()})
+
+
+def _notfound():
+    return response(404, {"message": "Not Found"})
+
+
+def test_get_action_metadata_prefers_yml_then_yaml():
+    base = "https://api.github.com/repos/o/r/contents/sub/"
+    api, session = api_with({("GET", base + "action.yml"): _file("yml"), ("GET", base + "action.yaml"): _file("yaml")})
+    assert get_action_metadata(api, "o", "r", "sub", "v1") == "yml"
+    assert len(session.requests) == 1  # no directory listing, no second fetch
+
+    api, _ = api_with({("GET", base + "action.yml"): _notfound(), ("GET", base + "action.yaml"): _file("yaml")})
+    assert get_action_metadata(api, "o", "r", "sub/", "v1") == "yaml"
+
+
+def test_get_action_metadata_root_explicit_file_and_missing():
+    root = "https://api.github.com/repos/o/r/contents/"
+    api, _ = api_with({("GET", root + "action.yml"): _file("root")})
+    assert get_action_metadata(api, "o", "r", "", "v1") == "root"
+
+    api, _ = api_with({("GET", root + "x/action.yaml"): _file("direct")})
+    assert get_action_metadata(api, "o", "r", "x/action.yaml", "v1") == "direct"
+
+    api, _ = api_with({("GET", root + "action.yml"): _notfound(), ("GET", root + "action.yaml"): _notfound()})
+    with pytest.raises(NotFound):
+        get_action_metadata(api, "o", "r", "", "v1")

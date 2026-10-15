@@ -15,8 +15,8 @@ from typing import Optional
 import yaml
 
 from ..allowlist import final_at, read_final
-from ..github import GitHubAPI
-from ..identity import is_full_sha, resolve_uses, split_action_name
+from ..github import GitHubAPI, NotFound, get_action_metadata
+from ..identity import is_full_sha, resolve_uses
 
 log = logging.getLogger(__name__)
 
@@ -85,20 +85,6 @@ def batch_zizmor(entries: list[str], disabled: set[str]) -> dict[str, list[dict]
     return by_entry
 
 
-def get_action_metadata(api: GitHubAPI, action_name: str, action_ref: str) -> str:
-    """Return the metadata file (i.e. the actual action.y*ml) as yaml str
-
-    See https://docs.github.com/en/actions/reference/workflows-and-actions/metadata-syntax#runs-for-composite-actions
-    for its syntax.
-    """
-    owner, repo, path = split_action_name(action_name)
-    listing = api.list_dir(owner, repo, path, action_ref)
-    metadata_files = [f["name"] for f in listing if f["name"].startswith("action.y")]
-    if len(metadata_files) != 1:
-        sys.exit(f"  FATAL found {len(metadata_files)} action metadata files for {action_name}@{action_ref}")
-    return api.get_file_text(owner, repo, f"{path}/{metadata_files[0]}".lstrip("/"), action_ref)
-
-
 def review_action_metadata(api: GitHubAPI, owner: str, repo: str, path: str, ref: str, action_yml: str) -> None:
     """Check for specific mutability things depending on action type."""
     action_data = yaml.safe_load(action_yml)
@@ -162,7 +148,10 @@ def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], di
         print("  reusable workflow")
         content = api.get_file_text(owner, repo, path, fetch_ref)
     else:
-        content = get_action_metadata(api, f"{owner}/{repo}/{path}".rstrip("/"), fetch_ref)
+        try:
+            content = get_action_metadata(api, owner, repo, path, fetch_ref)
+        except NotFound:
+            sys.exit(f"  FATAL no action metadata file found for {owner}/{repo}/{path}@{fetch_ref}")
         review_action_metadata(api, owner, repo, path, fetch_ref, content)
 
     # Run a limited zizmor scan on JUST the action.y{a,}ml / workflow file:
