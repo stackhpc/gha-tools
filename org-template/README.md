@@ -4,12 +4,10 @@ The `@ORG@` GitHub organisation only allows workflows to use actions and reusabl
 workflows which are either:
 - From the `@ORG@` org
 - From github (`github/`, `actions/`)
-- On an allowlist
+- On the allowlist defined here: [@ORG@.final.txt](./@ORG@.final.txt)
 
 This repository defines the allowlist and uses the `gha` [tool](https://github.com/stackhpc/gha-tools)
 to maintain it.
-
-To see which actions and reusable workflows are allowed, see [@ORG@.final.txt](./@ORG@.final.txt).
 
 > [!IMPORTANT]
 > The allowlist in GitHub settings must be manually updated by an organisation admin when the allowlist
