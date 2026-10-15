@@ -362,8 +362,3 @@ python ../../cassette.py fill stackhpc.jsonl -- scan stackhpc
 
 `pytest` also replays any recordings in `tests/recordings/` against the
 outputs saved next to them - see `tests/test_regression.py`.
-
-## TODO
-
-- Check if the API can show whether ORG.final.txt is out of date with the
-  actual allowlist.
