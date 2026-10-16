@@ -1,3 +1,4 @@
+---
 name: Review allowlist
 
 # Reusable workflow for an organisation's allowlist repo (e.g. stackhpc/gha-stackhpc).
@@ -51,24 +52,15 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
-        with:
-          python-version: "3.x"
-
-      - name: Install gha-tools
-        env:
-          REQUIREMENTS: ${{ inputs.requirements }}
-        run: |
-          python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install -r "$REQUIREMENTS"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - name: Set up uv
+        uses: astral-sh/setup-uv@eb1897b8dc4b5d5bfe39a428a8f2304605e0983c # v7.0.0
 
       # No --base: review every entry. gha exits 1 if any are known-vulnerable.
       - name: Review allowlist
         env:
           ORG: ${{ inputs.org }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gha review "$ORG"
+        run: uv run --frozen gha review "$ORG"
 
       # Failures only. This includes install/infrastructure errors, not just
       # known-vulnerable findings. Uses curl rather than a third-party action.
