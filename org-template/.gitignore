@@ -3,5 +3,4 @@
 *.db-shm
 *.db-wal
 venv/
-.python-version
 .venv
