@@ -243,9 +243,8 @@ top of the workflow. The inputs are:
 
 Unlike `gha update` this reviews all entries rather than only those added on a branch.
 
-The workflow uses the gha version pinned in your uv.lock file. UV will update this pinned version
-automatically anytime you run a command locally.
-* If you would like to force an update to the pin, run `uv sync`.
+The workflow uses the gha version pinned in your uv.lock file.
+* If you would like to force an update to the pin, run `uv lock --update`.
 * If you would like to prevent modification of `uv.lock` and use the pinned version, add `--frozen` when you invoke `uv run`.
 
 ## Actions file format

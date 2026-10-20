@@ -26,7 +26,7 @@ This can be carried out by anyone with access to this repo:
 4. Setup:
 
    ```shell
-   uv sync
+   uv sync --upgrade
    export GITHUB_TOKEN=$(gh auth token)
    ```
 
