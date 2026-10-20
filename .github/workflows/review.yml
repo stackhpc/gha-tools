@@ -5,7 +5,7 @@ name: Review allowlist
 # Runs `gha review ORG` over every entry in ORG.final.txt, and fails if any
 # are known-vulnerable.
 # Example of an action which calls this one is at
-# https://github.com/stackhpc/github-actions-allowlist/blob/main/org-template/.github/workflows/review.yaml
+# https://github.com/stackhpc/gha-tools/blob/main/org-template/.github/workflows/review.yaml
 
 on:
   workflow_call:
