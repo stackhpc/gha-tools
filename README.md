@@ -62,7 +62,6 @@ Other subcommands are provided to help maintain the organisations workflows and 
 All commands read and write `ORG.*` files in the current directory. `LOG_LEVEL`
 sets the log level (default `INFO`).
 
-
 ## Command details
 This section provides more details on commands, to help organisation allowlist maintainers and
 `gha` developers.
@@ -222,10 +221,10 @@ manually when happy.
 
 1. Copy the `org-template` file to a new repo, replacing
 `@ORG@` with the organisation name.
-2. Run `gha scan ORG` and copy the suggested actions.txt output shown into a file `ORG.actions.txt`.
+2. Run `uv run gha scan ORG` and copy the suggested actions.txt output shown into a file `ORG.actions.txt`.
    It may be necessary to manually trim the list of actions or e.g. disable workflows
    on repositories and rerun the scan, if this is too broad.
-3. Run `gha update ORG`.
+3. Run `uv run gha update ORG`.
 4. Paste `ORG.final.txt` into the org's Actions settings.
 
 ### Scheduled review workflow
@@ -239,12 +238,14 @@ An example caller (which runs nightly, on merge to main and on demand) is in the
 top of the workflow. The inputs are:
 
 - `org` (required): the organisation name, i.e. the prefix of `ORG.final.txt`.
-- `requirements` (default `requirements.txt`): the file in the calling repo which pins the
-  version of `gha-tools` to install, so the review runs the same version as local use.
 - Secret `slack_webhook_url` (optional): a Slack incoming webhook. If given, a message is
   posted when the job fails, for any reason including install errors. Nothing is posted on success.
 
 Unlike `gha update` this reviews all entries rather than only those added on a branch.
+
+The workflow uses the gha version pinned in your uv.lock file.
+* If you would like to force an update to the pin, run `uv lock --update`.
+* If you would like to prevent modification of `uv.lock` and use the pinned version, add `--frozen` when you invoke `uv run`.
 
 ## Actions file format
 

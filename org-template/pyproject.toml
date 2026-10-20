@@ -1,0 +1,11 @@
+[project]
+name = "@ORG@-github-actions-allowlist"
+version = "0.1.0"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "gha-tools",
+]
+
+[tool.uv.sources]
+gha-tools = { git = "https://github.com/stackhpc/gha-tools", rev = "main" }

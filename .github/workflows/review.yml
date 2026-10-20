@@ -1,27 +1,11 @@
+---
 name: Review allowlist
 
 # Reusable workflow for an organisation's allowlist repo (e.g. stackhpc/gha-stackhpc).
 # Runs `gha review ORG` over every entry in ORG.final.txt, and fails if any
-# are known-vulnerable. Example caller:
-#
-#   on:
-#     push:
-#       branches: [main]
-#     schedule:
-#       - cron: "0 3 * * *"
-#     workflow_dispatch:
-#   permissions:
-#     contents: read
-#   jobs:
-#     review:
-#       uses: stackhpc/gha-tools/.github/workflows/review.yml@<sha>
-#       with:
-#         org: stackhpc
-#       secrets:
-#         slack_webhook_url: ${{ secrets.SLACK_WEBHOOK_URL }}  # optional
-#
-# If slack_webhook_url (a Slack incoming webhook) is passed, a message is posted
-# to Slack when the job fails. Nothing is posted on success.
+# are known-vulnerable.
+# Example of an action which calls this one is at
+# https://github.com/stackhpc/github-actions-allowlist/blob/main/org-template/.github/workflows/review.yaml
 
 on:
   workflow_call:
@@ -51,24 +35,19 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
-          python-version: "3.x"
-
-      - name: Install gha-tools
-        env:
-          REQUIREMENTS: ${{ inputs.requirements }}
-        run: |
-          python -m venv "$RUNNER_TEMP/venv"
-          "$RUNNER_TEMP/venv/bin/pip" install -r "$REQUIREMENTS"
-          echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+          enable-cache: true
+          prune-cache: true
+          cache-python: true
 
       # No --base: review every entry. gha exits 1 if any are known-vulnerable.
       - name: Review allowlist
         env:
           ORG: ${{ inputs.org }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: gha review "$ORG"
+        run: uv run --frozen gha review "$ORG"
 
       # Failures only. This includes install/infrastructure errors, not just
       # known-vulnerable findings. Uses curl rather than a third-party action.

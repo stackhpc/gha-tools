@@ -1,1 +1,0 @@
-gha-tools @ git+https://github.com/stackhpc/gha-tools@main
