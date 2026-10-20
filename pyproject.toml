@@ -1,10 +1,7 @@
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
 [project]
 name = "gha-tools"
-version = "0.1.0"
+dynamic = ["version"]
+
 description = "Tools to define an allowlist of GitHub Actions for an organisation, and update repos to match"
 readme = "README.md"
 requires-python = ">=3.9"
@@ -27,3 +24,11 @@ packages = ["src/gha_tools"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["tests"]
+
+[build-system]
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+source = "vcs"
+fallback-version = "0.0.1+unknown"
