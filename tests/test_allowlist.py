@@ -204,7 +204,7 @@ def test_write_and_read_final(tmp_path, monkeypatch):
     allowlist.write_final("org", final)
     assert (tmp_path / "org.final.txt").read_text() == f"a/a@{SHA_A},\nb/b@v1,\n"
     assert allowlist.read_final("org") == ({f"a/a@{SHA_A}", "b/b@v1"}, final)
-    assert json.loads((tmp_path / "org.final.json").read_text()) == final
+    assert json.loads((tmp_path / "jsondata" / "org.final.json").read_text()) == final
 
 
 # -- git ----------------------------------------------------------------------

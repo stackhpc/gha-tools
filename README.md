@@ -42,7 +42,7 @@ also need to be allowlisted. It then scans (by default) any changes to actions, 
 which are known-vulnerable (via [Zizmor](https://docs.zizmor.sh/audits/#known-vulnerable-actions)
 and the GitHub Advisories database). It will warn if any actions/workflows are specified without
 a SHA, as this is discouraged to avoid mutability. If the scan passes it (re-)generates
-`$ORG.final.txt` as well as `$ORG.final.json` which contains information on tags (versions)
+`$ORG.final.txt` as well as `jsondata/$ORG.final.json` which contains information on tags (versions)
 matching the specified SHA as well as the call-chain leading to this action to aid debugging.
 
 Other subcommands are provided to help maintain the organisations workflows and allowlist, see below.
@@ -81,7 +81,7 @@ usage: gha update [--no-review] ORG
 See [Overview](#overview) for a functional description. Additional details:
 - See [Actions file format](#actions-file-format) for the full description of `ORG.actions.txt`.
 - Warnings are raised for any `# vX.Y.Z` which do not match tags found for a SHA
-- The `ORG.final.txt` and `ORG.final.json` files are only written if the review succeeds (or
+- The `ORG.final.txt` and `jsondata/ORG.final.json` files are only written if the review succeeds (or
   `--no-review` was given).
 - The changes to the allowlist to review are determined by comparing what will be written to the
   new `ORG.final.txt` with the merge-base of HEAD and origin/main, so only changes made on the current
@@ -94,7 +94,7 @@ See [Overview](#overview) for a functional description. Additional details:
 - The entries in `ORG.final.txt` use exactly the ref given in the `uses:` calls (i.e. there is no
   translation from versions to SHAs etc), as this is what the GitHub allowlist uses. Entries
   are deduplicated sorted to provide stable diffs.
-- `ORG.final.json` records provenance for each entry:
+- `jsondata/ORG.final.json` records provenance for each entry:
   - Its `kind`
   - The resolved `sha`
   - The `version` from the most-specific tag on that SHA, i.e. if a SHA is tagged both `v2` and `v2.3` the latter is used
@@ -213,7 +213,7 @@ where:
 
 This clones the repo (by default to `~`, unless `--path` is given) and rewrites
 `uses: ACTION@<anything>` in `.github/workflows/*` and any `action.y{a,}ml` to
-`uses: ACTION@REF # VERSION`. The `VERSION` comes from `ORG.final.json`.
+`uses: ACTION@REF # VERSION`. The `VERSION` comes from `jsondata/ORG.final.json`.
 
 Note this does not commit changes. They should be checked and a normal PR process followed
 manually when happy.
@@ -296,7 +296,7 @@ Under `src/gha_tools/`:
   unresolved), plus ref helpers.
 - `walker.py`: the dependency graph walker - see below.
 - `allowlist.py`: reading `ORG.actions.txt`, building and writing
-  `ORG.final.{txt,json}`, and reading `ORG.final.txt` at a git ref.
+  `ORG.final.txt` and `jsondata/ORG.final.json`, and reading `ORG.final.txt` at a git ref.
 - `discovery.py`: finding an org's repos and the workflows in them which are in
   use (`gha scan` only).
 - `commands/*.py`: one module per subcommand.

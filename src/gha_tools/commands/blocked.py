@@ -8,7 +8,7 @@ import os
 import time
 from collections import defaultdict
 
-from ..allowlist import AllowlistError, final_txt_path, parse_final_txt
+from ..allowlist import AllowlistError, final_txt_path, json_path, parse_final_txt
 
 log = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 def load_scan(org: str) -> tuple[dict, dict]:
     """The (ORG.json, ORG.calls.json) written by `gha scan`."""
     try:
-        with open(f"{org}.json") as f_json, open(f"{org}.calls.json") as f_calls:
+        with open(json_path(f"{org}.json")) as f_json, open(json_path(f"{org}.calls.json")) as f_calls:
             return json.load(f_json), json.load(f_calls)
     except FileNotFoundError as e:
         raise AllowlistError(f"{e.filename} not found: run `gha scan {org}` first") from e
@@ -75,7 +75,7 @@ def blocked(org: str) -> int:
     except FileNotFoundError as e:
         raise AllowlistError(f"{e.filename} not found: run `gha update {org}` first") from e
 
-    scanned = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(f"{org}.calls.json")))
+    scanned = time.strftime("%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(json_path(f"{org}.calls.json"))))
     log.info(f"Using scan from {scanned}; {len(allowed)} entries in {final_txt_path(org)}")
 
     result = find_blocked(actions, calls, allowed)

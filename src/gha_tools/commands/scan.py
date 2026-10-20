@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from typing import Optional
 
-from ..allowlist import FINAL_KINDS, is_github_owned
+from ..allowlist import FINAL_KINDS, JSON_DIR, is_github_owned, json_path
 from ..discovery import get_repo_workflows, list_org_repos
 from ..github import GitHubAPI
 from ..identity import is_org_owned
@@ -37,9 +38,10 @@ def scan(api: GitHubAPI, org: str, repo: Optional[str] = None, resume: bool = Fa
     walker.run()
 
     actions_output, calls_output = summarise(walker, org)
-    with open(f"{org}.json", "w") as f_json:
+    os.makedirs(JSON_DIR, exist_ok=True)
+    with open(json_path(f"{org}.json"), "w") as f_json:
         json.dump(actions_output, f_json, indent=2)
-    with open(f"{org}.calls.json", "w") as f_calls:
+    with open(json_path(f"{org}.calls.json"), "w") as f_calls:
         json.dump(calls_output, f_calls, indent=2)
 
     print(format_actions_txt(walker, org), end="")

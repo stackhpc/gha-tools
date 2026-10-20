@@ -53,7 +53,7 @@ This can be carried out by anyone with access to this repo:
    reviews the resultant list for [known-vulnerable actions](https://docs.zizmor.sh/audits/#known-vulnerable-actions).
 
 6. If this succeeds, commit the updated files (`@ORG@.actions.txt`, `@ORG@.final.txt`,
-   and `@ORG@.final.json` containing a call graph) to a branch and create a PR.
+   and `jsondata/@ORG@.final.json` containing a call graph) to a branch and create a PR.
 
 7. Once the PR has been reviewed and merged, an organisation admin must copy the updated allowlist
    from `@ORG@.final.txt` into the organisation's [Actions settings](https://github.com/organizations/@ORG@/settings/actions).

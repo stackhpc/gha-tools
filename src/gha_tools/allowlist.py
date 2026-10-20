@@ -5,13 +5,15 @@ The allowlist files:
   line - every action / reusable workflow the org calls directly, plus
   (optionally) the org's own actions/workflows so their dependencies are found.
 - `<org>.final.txt`: generated allowlist, pasteable into the GitHub web UI.
-- `<org>.final.json`: generated provenance for each final.txt entry.
+- `jsondata/<org>.final.json`: generated provenance for each final.txt entry.
+  (All generated JSON lives in `jsondata/`, keeping it apart from the files users edit.)
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import os
 import re
 import subprocess
 from dataclasses import dataclass
@@ -39,8 +41,16 @@ def final_txt_path(org: str) -> str:
     return f"{org}.final.txt"
 
 
+JSON_DIR = "jsondata"
+
+
+def json_path(filename: str) -> str:
+    """Path of a generated JSON file within JSON_DIR."""
+    return os.path.join(JSON_DIR, filename)
+
+
 def final_json_path(org: str) -> str:
-    return f"{org}.final.json"
+    return json_path(f"{org}.final.json")
 
 
 def is_github_owned(owner: Optional[str]) -> bool:
@@ -189,6 +199,7 @@ def format_final_txt(final: dict) -> str:
 def write_final(org: str, final: dict) -> None:
     with open(final_txt_path(org), "w") as f:
         f.write(format_final_txt(final))
+    os.makedirs(JSON_DIR, exist_ok=True)
     with open(final_json_path(org), "w") as f:
         json.dump(final, f, indent=2)
         f.write("\n")

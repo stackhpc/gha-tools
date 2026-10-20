@@ -94,7 +94,8 @@ def org_files(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     (tmp_path / "myorg.actions.txt").write_text(f"foo/bar@{SHA_A}\nmulti/ref@{SHA_A}\nmulti/ref@{SHA_B}\n")
     (tmp_path / "myorg.final.txt").write_text(f"foo/bar@{SHA_A},\nmulti/ref@{SHA_A},\nmulti/ref@{SHA_B},\n")
-    (tmp_path / "myorg.final.json").write_text(json.dumps({
+    (tmp_path / "jsondata").mkdir()
+    (tmp_path / "jsondata" / "myorg.final.json").write_text(json.dumps({
         f"foo/bar@{SHA_A}": {"version": "v1.2.3"},
         f"multi/ref@{SHA_A}": {"version": ""},
     }))

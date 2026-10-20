@@ -70,7 +70,8 @@ def org_files(tmp_path, monkeypatch):
 
     def write(entries):
         (tmp_path / "org.final.txt").write_text("".join(f"{e},\n" for e in entries))
-        (tmp_path / "org.final.json").write_text(json.dumps({e: {"version": e[-2:]} for e in entries}))
+        (tmp_path / "jsondata").mkdir(exist_ok=True)
+        (tmp_path / "jsondata" / "org.final.json").write_text(json.dumps({e: {"version": e[-2:]} for e in entries}))
 
     return write
 
@@ -183,11 +184,11 @@ def test_update_vulnerable_leaves_files_untouched(org_files, reviewed, monkeypat
     """End-to-end through the real review: a vulnerable addition means the
     existing files are left as they were."""
     org_files(["a/a@v1"])
-    before = (open("org.final.txt").read(), open("org.final.json").read())
+    before = (open("org.final.txt").read(), open("jsondata/org.final.json").read())
     monkeypatch.setattr(update, "read_actions", lambda org: [])
     monkeypatch.setattr(update, "walk", lambda walker, entries: None)
     monkeypatch.setattr(update, "check_versions", lambda walker, entries: None)
     monkeypatch.setattr(update, "build_final", lambda walker, entries, org: {"a/a@v1": {}, "vuln/new@v1": {}})
     monkeypatch.setattr(review, "final_at", lambda org, base: {"a/a@v1"})
     assert update.update(None, "org") == 1
-    assert (open("org.final.txt").read(), open("org.final.json").read()) == before
+    assert (open("org.final.txt").read(), open("jsondata/org.final.json").read()) == before
