@@ -176,6 +176,23 @@ def review(api: GitHubAPI, entries: dict[str, dict]) -> list[str]:
     return [uses for uses in names if any(f["ident"] == KNOWN_VULNERABLE for f in findings[uses])]
 
 
+def is_github_actions() -> bool:
+    """True if running inside a GitHub Actions workflow run (GITHUB_RUN_ID is set)."""
+    return "GITHUB_RUN_ID" in os.environ
+
+
+def write_github_output(vulnerable: list[str]) -> None:
+    """When running in GitHub Actions, expose the failed entries as the `failed` step output."""
+    if is_github_actions():
+        output_path = os.environ.get("GITHUB_OUTPUT", "/dev/stdout")
+        with open(output_path, "a") as f:
+            # Use HEREDOC style so that we can put a multi-line sting into GITHUB_OUTPUT
+            print("failed-uses<<GHA_EOF", file=f)
+            for use in vulnerable:
+                print(f"{use}", file=f)
+            print("GHA_EOF", file=f)
+
+
 def review_org(api: GitHubAPI, org: str, base: Optional[str] = None) -> int:
     """Review all of an org's final.txt, or (with base) only entries added
     since that git ref. Returns an exit status: 1 if any reviewed entry is
@@ -206,6 +223,7 @@ def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: 
         for uses in sorted(removed):
             print(f"  - {uses}")
     if vulnerable:
+        write_github_output(vulnerable)
         print("\nFAIL: known-vulnerable entries:")
         for uses in vulnerable:
             print(f"  {uses}")
