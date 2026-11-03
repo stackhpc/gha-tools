@@ -197,23 +197,27 @@ def ai_review(
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-def _field(label: str, text: str, width: int = 100) -> None:
-    """Print `label: text` indented, wrapped with a hanging indent so continuation lines align."""
+def _field(label: str, text: str, width: int = 100) -> list[str]:
+    """`label: text` indented, wrapped with a hanging indent so continuation lines align."""
     prefix = f"    {label + ':':<13}"
-    print(textwrap.fill(" ".join(text.split()), width=width, initial_indent=prefix,
-                        subsequent_indent=" " * len(prefix), break_long_words=False))
+    return textwrap.wrap(" ".join(text.split()), width=width, initial_indent=prefix,
+                         subsequent_indent=" " * len(prefix), break_long_words=False)
+
+
+def format_verdict(verdict: dict) -> list[str]:
+    """The lines of the AI review section of a review block."""
+    lines = [f"  AI review: {verdict['verdict']}"]
+    for label, key in (("examined", "examined"), ("limitations", "limitations"), ("notes", "notes")):
+        if text := verdict.get(key):
+            lines += _field(label, text)
+    if verdict["findings"]:
+        lines.append("    findings:")
+        for f in verdict["findings"]:
+            lines += textwrap.wrap(f"{f['file']}: {f['concern']}", width=100, initial_indent="      ",
+                                   subsequent_indent="        ", break_long_words=False)
+            lines.append(f"        > {' '.join(f['evidence'].split())[:300]}")
+    return lines
 
 
 def print_verdict(verdict: dict) -> None:
-    print(f"  AI review: {verdict['verdict']}")
-    _field("examined", verdict["examined"])
-    if verdict.get("limitations"):
-        _field("limitations", verdict["limitations"])
-    if verdict.get("notes"):
-        _field("notes", verdict["notes"])
-    if verdict["findings"]:
-        print("    findings:")
-        for f in verdict["findings"]:
-            print(textwrap.fill(f"{f['file']}: {f['concern']}", width=100, initial_indent="      ",
-                                subsequent_indent="        ", break_long_words=False))
-            print(f"        > {' '.join(f['evidence'].split())[:300]}")
+    print("\n".join(format_verdict(verdict)))

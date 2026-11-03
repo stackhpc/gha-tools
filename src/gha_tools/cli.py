@@ -44,12 +44,12 @@ def main():
 
     parser_update = subparsers.add_parser(
         'update', help='regenerate ORG.final.{txt,json} from ORG.actions.txt and review additions',
-        description='Walk all dependencies of the entries in ORG.actions.txt, review the entries added '
-                    'since the merge-base of HEAD and origin/main, then update the allowlist ORG.final.txt and the provenance '
-                    'information in ORG.final.json if the review passes.')
+        description='Walk all dependencies of the entries in ORG.actions.txt, review the entries which '
+                    'have no review in ORG.review.txt yet (recording the results there), then update the '
+                    'allowlist ORG.final.txt and the provenance information in ORG.final.json if the review passes.')
     parser_update.set_defaults(task="update", needs_token=True)
     parser_update.add_argument('org', help="name of GitHub organisation")
-    parser_update.add_argument('--no-review', action='store_true', help="don't review added entries")
+    parser_update.add_argument('--no-review', action='store_true', help="don't review entries or update ORG.review.txt")
 
     parser_fix = subparsers.add_parser(
         'fix', help='fix a repo to use an allowlisted action ref',
@@ -63,13 +63,19 @@ def main():
 
     parser_review = subparsers.add_parser(
         'review', help='review ORG.final.txt, or a selected action',
-        description='Review all allowlist entries in ORG.final.txt (optionally only those added since '
-                    '--base), or a specific action@ref. Transitive dependencies are included.')
+        description='Review the entries in ORG.final.txt which have no review in ORG.review.txt yet, '
+                    'recording the results there, or a specific action@ref (which is only printed). '
+                    'Transitive dependencies are included. '
+                    'Also AI-reviews the source of pinned entries unless --no-ai is given.')
     parser_review.set_defaults(task="review", needs_token=True)
     parser_review.add_argument('target', help="name of GitHub organisation, or action@ref")
-    parser_review.add_argument('--base', help="git ref: only review entries added to ORG.final.txt since this")
 
-    parser_review.add_argument('--ai', action='store_true', help="also AI-review the source (action@ref only, for now)")
+    parser_review.add_argument(
+        '--no-ai', action='store_true',
+        help="skip the AI review of each (pinned) action's source, which is otherwise done and needs the claude CLI")
+    parser_review.add_argument(
+        '--force', action='store_true', help="review all entries again, replacing their blocks in ORG.review.txt "
+                                             "(including any overrides in them)")
 
     args = parser.parse_args()
     api = None
@@ -93,13 +99,11 @@ def main():
             fix_repo(args.org, args.repo, args.action, args.path)
 
         elif args.task == "review":
+            if args.force and "@" in args.target:
+                parser.error("--force is only valid when reviewing an organisation")
             if "@" in args.target:
-                if args.base:
-                    parser.error("--base is only valid when reviewing an organisation")
-                sys.exit(review_single(api, args.target, args.ai))
-            if args.ai:
-                parser.error("--ai is only implemented for action@ref so far")
-            sys.exit(review_org(api, args.target, args.base))
+                sys.exit(review_single(api, args.target, not args.no_ai))
+            sys.exit(review_org(api, args.target, not args.no_ai, args.force))
     except (Transient, AllowlistError) as e:
         sys.exit(f"FATAL: {e}")
 

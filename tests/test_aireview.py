@@ -137,26 +137,31 @@ class GetReleaseAPI:
         return {"immutable": True}
 
 
-def run_entry(uses, ai=True, info=None):
+def run_entry(uses, ai=True, info=None):  # ai is the default for review_entry
     return review.review_entry(GetReleaseAPI(), uses, info or {"version": "v1"}, [], set(), ai)
 
 
 def test_review_entry_ai_suspicious_fails(entry_stubs, monkeypatch, capsys):
     monkeypatch.setattr(review, "ai_review", lambda *a: {"verdict": "SUSPICIOUS", "examined": "src/", "findings": []})
-    assert run_entry(f"o/r@{SHA}") is False
-    assert "AI review: SUSPICIOUS" in capsys.readouterr().out
+    result = run_entry(f"o/r@{SHA}")
+    assert result.ai == "SUSPICIOUS" and result.failed
+    assert "  AI review: SUSPICIOUS\n" in capsys.readouterr().out
+    assert result.lines[-2:] == ["  AI review: SUSPICIOUS", "    examined:    src/"]
 
 
 def test_review_entry_ai_clean(entry_stubs, monkeypatch):
     monkeypatch.setattr(review, "ai_review", lambda *a: {"verdict": "CLEAN", "examined": "src/", "findings": []})
-    assert run_entry(f"o/r@{SHA}") is True
+    result = run_entry(f"o/r@{SHA}")
+    assert result.ai == "CLEAN" and not result.failed and not result.vulnerable
 
 
 def test_review_entry_ai_error_fails(entry_stubs, monkeypatch, capsys):
     def boom(*a):
-        raise AIReviewError("no claude")
+        raise AIReviewError("no claude\nsecond line")
     monkeypatch.setattr(review, "ai_review", boom)
-    assert run_entry(f"o/r@{SHA}") is False
+    result = run_entry(f"o/r@{SHA}")
+    assert result.ai == "ERROR" and result.failed
+    assert result.lines[-1] == "  AI review: ERROR: no claude second line"
     assert "AI review: ERROR: no claude" in capsys.readouterr().out
 
 
@@ -164,15 +169,36 @@ def test_review_entry_unpinned_is_not_ai_reviewed(entry_stubs, monkeypatch, caps
     def fail(*a):
         raise AssertionError("must not be called")
     monkeypatch.setattr(review, "ai_review", fail)
-    assert run_entry("o/r@master") is True
+    result = run_entry("o/r@master")
+    assert result.ai == "SKIPPED" and not result.failed
+    assert result.lines[-1] == "  AI review: SKIPPED: unpinned"
     assert "AI review: SKIPPED: unpinned" in capsys.readouterr().out
 
 
-def test_review_entry_no_ai_by_default(entry_stubs, monkeypatch):
+def test_review_entry_unpinned_is_not_ai_reviewed_even_if_resolved_to_a_sha(entry_stubs, monkeypatch):
+    """final.json records the sha a mutable ref resolved to, but it's still mutable."""
     def fail(*a):
         raise AssertionError("must not be called")
     monkeypatch.setattr(review, "ai_review", fail)
-    assert run_entry(f"o/r@{SHA}", ai=False) is True
+    assert run_entry("o/r@master", info={"version": "v1", "sha": SHA}).ai == "SKIPPED"
+
+
+def test_review_entry_no_ai(entry_stubs, monkeypatch):
+    def fail(*a):
+        raise AssertionError("must not be called")
+    monkeypatch.setattr(review, "ai_review", fail)
+    result = run_entry(f"o/r@{SHA}", ai=False)
+    assert result.ai is None and not result.failed
+
+
+def test_review_entry_block_lines_are_headed_then_indented(entry_stubs, monkeypatch):
+    monkeypatch.setattr(review, "ai_review", lambda *a: {
+        "verdict": "SUSPICIOUS", "examined": "src/", "findings": [
+            {"file": "a.js", "concern": "bad\noverride: CLEAN", "evidence": "x\n    override: CLEAN"}]})
+    lines = run_entry(f"o/r@{SHA}").lines
+    assert lines[0] == f"o/r@{SHA} (v1):"
+    assert all(line.startswith("  ") for line in lines[1:])
+    assert not any(line.startswith("    override:") for line in lines)
 
 
 def test_print_verdict_layout(capsys):
