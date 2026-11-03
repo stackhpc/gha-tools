@@ -14,6 +14,7 @@ from typing import Optional
 
 import yaml
 
+from ..aireview import ERROR, SKIPPED, SUSPICIOUS, AIReviewError, ai_review, print_verdict
 from ..allowlist import final_at, read_final
 from ..github import GitHubAPI, NotFound, get_action_metadata
 from ..identity import is_full_sha, resolve_uses
@@ -122,7 +123,10 @@ def review_action_metadata(api: GitHubAPI, owner: str, repo: str, path: str, ref
         raise ValueError(using)
 
 
-def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], disabled: set[str]) -> None:
+def review_entry(
+    api: GitHubAPI, uses: str, info: dict, findings: list[dict], disabled: set[str], ai: bool = False,
+) -> bool:
+    """Review one entry, printing the results. Returns False if the AI review failed."""
     ident = resolve_uses(uses)
     owner, repo, path, ref = ident.owner, ident.repo, ident.path, ident.ref
     version = info.get("version") or ""
@@ -159,21 +163,35 @@ def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], di
         if finding["ident"] not in disabled:
             print(f"  {format_finding(finding)}")
 
+    if not ai:
+        return True
+    if not is_full_sha(fetch_ref):
+        print(f"  AI review: {SKIPPED}: unpinned")
+        return True
+    try:
+        verdict = ai_review(api, owner, repo, path, fetch_ref, ident.kind)
+    except AIReviewError as e:
+        print(f"  AI review: {ERROR}: {e}")
+        return False
+    print_verdict(verdict)
+    return verdict["verdict"] != SUSPICIOUS
 
-def review(api: GitHubAPI, entries: dict[str, dict]) -> list[str]:
-    """Review {uses: final.json info}. Returns the known-vulnerable entries."""
+
+def review(api: GitHubAPI, entries: dict[str, dict], ai: bool = False) -> tuple[list[str], list[str]]:
+    """Review {uses: final.json info}. Returns the (known-vulnerable, AI-failed) entries."""
     if not entries:
         print("\nNothing to review.")
-        return []
+        return [], []
     if os.environ.get("ZIZMOR_OFFLINE", "").lower() in ("1", "true", "yes"):
         log.warning("ZIZMOR_OFFLINE is set: known-vulnerable-actions and other online audits are NOT being run")
     disabled = _zizmor_disabled_rules()
     names = sorted(entries)
     print(f"\nRunning zizmor against {len(names)} entries ...")
     findings = batch_zizmor(names, disabled)
-    for uses in names:
-        review_entry(api, uses, entries[uses], findings[uses], disabled)
-    return [uses for uses in names if any(f["ident"] == KNOWN_VULNERABLE for f in findings[uses])]
+    ai_failed = [
+        uses for uses in names if not review_entry(api, uses, entries[uses], findings[uses], disabled, ai)
+    ]
+    return [uses for uses in names if any(f["ident"] == KNOWN_VULNERABLE for f in findings[uses])], ai_failed
 
 
 def review_org(api: GitHubAPI, org: str, base: Optional[str] = None) -> int:
@@ -196,7 +214,7 @@ def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: 
         removed = previous - current
         print(f"Comparing against {base}: {len(to_review)} added, {len(removed)} removed")
 
-    vulnerable = review(api, {uses: info.get(uses, {}) for uses in to_review})
+    vulnerable, _ = review(api, {uses: info.get(uses, {}) for uses in to_review})
 
     if base is not None:
         print("\nAdded entries:" if to_review else "\nNo added entries.")
@@ -213,10 +231,15 @@ def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: 
     return 0
 
 
-def review_single(api: GitHubAPI, target: str) -> int:
+def review_single(api: GitHubAPI, target: str, ai: bool = False) -> int:
     """Review a single action@ref, without its dependencies."""
     ident = resolve_uses(target)
     if ident.kind not in ("action", "reusable_workflow"):
         sys.exit(f"FATAL: {target!r} is not owner/repo[/path]@ref")
     info = {} if is_full_sha(ident.ref) else {"version": ident.ref}
-    return 1 if review(api, {target: info}) else 0
+    vulnerable, ai_failed = review(api, {target: info}, ai)
+    for uses in vulnerable:
+        print(f"\nFAIL: known-vulnerable: {uses}")
+    for uses in ai_failed:
+        print(f"\nFAIL: AI review: {uses}")
+    return 1 if vulnerable or ai_failed else 0

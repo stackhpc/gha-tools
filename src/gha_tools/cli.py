@@ -69,6 +69,8 @@ def main():
     parser_review.add_argument('target', help="name of GitHub organisation, or action@ref")
     parser_review.add_argument('--base', help="git ref: only review entries added to ORG.final.txt since this")
 
+    parser_review.add_argument('--ai', action='store_true', help="also AI-review the source (action@ref only, for now)")
+
     args = parser.parse_args()
     api = None
     if args.needs_token:
@@ -94,7 +96,9 @@ def main():
             if "@" in args.target:
                 if args.base:
                     parser.error("--base is only valid when reviewing an organisation")
-                sys.exit(review_single(api, args.target))
+                sys.exit(review_single(api, args.target, args.ai))
+            if args.ai:
+                parser.error("--ai is only implemented for action@ref so far")
             sys.exit(review_org(api, args.target, args.base))
     except (Transient, AllowlistError) as e:
         sys.exit(f"FATAL: {e}")

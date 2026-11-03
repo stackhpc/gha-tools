@@ -55,8 +55,9 @@ def reviewed(monkeypatch):
         return {e: [finding("known-vulnerable-actions", i)] if e.startswith("vuln/") else []
                 for i, e in enumerate(entries)}
 
-    def fake_review_entry(api, uses, info, findings, disabled):
+    def fake_review_entry(api, uses, info, findings, disabled, ai=False):
         calls.append((uses, info))
+        return True
 
     monkeypatch.setattr(review, "batch_zizmor", fake_batch)
     monkeypatch.setattr(review, "review_entry", fake_review_entry)
