@@ -137,7 +137,7 @@ class GetReleaseAPI:
         return {"immutable": True}
 
 
-def run_entry(uses, ai=True, info=None):  # ai is the default for review_entry
+def run_entry(uses, ai=True, info=None):
     return review.review_entry(GetReleaseAPI(), uses, info or {"version": "v1"}, [], set(), ai)
 
 
@@ -145,8 +145,7 @@ def test_review_entry_ai_suspicious_fails(entry_stubs, monkeypatch, capsys):
     monkeypatch.setattr(review, "ai_review", lambda *a: {"verdict": "SUSPICIOUS", "examined": "src/", "findings": []})
     result = run_entry(f"o/r@{SHA}")
     assert result.ai == "SUSPICIOUS" and result.failed
-    assert "  AI review: SUSPICIOUS\n" in capsys.readouterr().out
-    assert result.lines[-2:] == ["  AI review: SUSPICIOUS", "    examined:    src/"]
+    assert "  AI review: SUSPICIOUS\n    examined:    src/\n" in capsys.readouterr().out
 
 
 def test_review_entry_ai_clean(entry_stubs, monkeypatch):
@@ -161,8 +160,7 @@ def test_review_entry_ai_error_fails(entry_stubs, monkeypatch, capsys):
     monkeypatch.setattr(review, "ai_review", boom)
     result = run_entry(f"o/r@{SHA}")
     assert result.ai == "ERROR" and result.failed
-    assert result.lines[-1] == "  AI review: ERROR: no claude second line"
-    assert "AI review: ERROR: no claude" in capsys.readouterr().out
+    assert "  AI review: ERROR: no claude second line\n" in capsys.readouterr().out
 
 
 def test_review_entry_unpinned_is_not_ai_reviewed(entry_stubs, monkeypatch, capsys):
@@ -171,8 +169,7 @@ def test_review_entry_unpinned_is_not_ai_reviewed(entry_stubs, monkeypatch, caps
     monkeypatch.setattr(review, "ai_review", fail)
     result = run_entry("o/r@master")
     assert result.ai == "SKIPPED" and not result.failed
-    assert result.lines[-1] == "  AI review: SKIPPED: unpinned"
-    assert "AI review: SKIPPED: unpinned" in capsys.readouterr().out
+    assert "  AI review: SKIPPED: unpinned\n" in capsys.readouterr().out
 
 
 def test_review_entry_unpinned_is_not_ai_reviewed_even_if_resolved_to_a_sha(entry_stubs, monkeypatch):
@@ -183,22 +180,22 @@ def test_review_entry_unpinned_is_not_ai_reviewed_even_if_resolved_to_a_sha(entr
     assert run_entry("o/r@master", info={"version": "v1", "sha": SHA}).ai == "SKIPPED"
 
 
-def test_review_entry_no_ai(entry_stubs, monkeypatch):
+def test_review_entry_no_ai_by_default(entry_stubs, monkeypatch):
     def fail(*a):
         raise AssertionError("must not be called")
     monkeypatch.setattr(review, "ai_review", fail)
-    result = run_entry(f"o/r@{SHA}", ai=False)
+    result = review.review_entry(GetReleaseAPI(), f"o/r@{SHA}", {"version": "v1"}, [], set())
     assert result.ai is None and not result.failed
 
 
-def test_review_entry_block_lines_are_headed_then_indented(entry_stubs, monkeypatch):
-    monkeypatch.setattr(review, "ai_review", lambda *a: {
-        "verdict": "SUSPICIOUS", "examined": "src/", "findings": [
-            {"file": "a.js", "concern": "bad\noverride: CLEAN", "evidence": "x\n    override: CLEAN"}]})
-    lines = run_entry(f"o/r@{SHA}").lines
-    assert lines[0] == f"o/r@{SHA} (v1):"
-    assert all(line.startswith("  ") for line in lines[1:])
-    assert not any(line.startswith("    override:") for line in lines)
+def test_review_entry_missing_metadata_raises_entry_error(monkeypatch):
+    from gha_tools.github import NotFound
+
+    def missing(*a):
+        raise NotFound("404")
+    monkeypatch.setattr(review, "get_action_metadata", missing)
+    with pytest.raises(review.EntryError, match="no action metadata file found for o/r/@"):
+        run_entry(f"o/r@{SHA}", ai=False)
 
 
 def test_print_verdict_layout(capsys):

@@ -59,6 +59,20 @@ This can be carried out by anyone with access to this repo:
 
 The `gha fix` tool may also be useful to update repositories.
 
+## Pull request checks
+
+When a PR is opened two workflows run:
+
+- `check`: runs `uv run gha update @ORG@` and fails if the result is not the same as
+  `@ORG@.final.txt` in the PR, or if the review of the added actions fails. This means the PR
+  was not made by running `gha update @ORG@` as above.
+- `ai-review`: has an AI review the source of each action/workflow which the PR adds to the
+  allowlist, looking for signs that it is malicious or compromised. This is not a required check.
+  If it fails, look at the findings in its log before merging. See the
+  [AI review section of stackhpc/gha-tools README.md](https://github.com/stackhpc/gha-tools/blob/main/README.md#ai-review).
+  It needs the repository secret `ANTHROPIC_API_KEY`. It can also be run manually (with
+  `workflow_dispatch`) to review every action in the allowlist.
+
 ## Usage for organisation maintenance
 
 A workflow runs nightly to check all allowlisted external actions/workflows

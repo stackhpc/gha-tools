@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import subprocess
 from dataclasses import dataclass
 from typing import Optional
 
@@ -34,10 +35,6 @@ class AllowlistError(Exception):
 
 def actions_path(org: str) -> str:
     return f"{org}.actions.txt"
-
-
-def review_txt_path(org: str) -> str:
-    return f"{org}.review.txt"
 
 
 def final_txt_path(org: str) -> str:
@@ -219,3 +216,40 @@ def read_final(org: str) -> tuple[set[str], dict]:
     with open(final_json_path(org)) as f:
         info = json.load(f)
     return entries, info
+
+
+# --------------------------------------------------------------------------
+# Comparison against git
+# --------------------------------------------------------------------------
+
+def _git(*args: str) -> Optional[str]:
+    """stdout of a git command, or None if it fails (incl. git not installed)."""
+    try:
+        p = subprocess.run(["git", *args], capture_output=True, text=True)
+    except FileNotFoundError:
+        return None
+    return p.stdout if p.returncode == 0 else None
+
+
+def default_base() -> str:
+    """The merge-base with origin/main, i.e. what a PR will be compared
+    against, falling back to HEAD."""
+    merge_base = _git("merge-base", "HEAD", "origin/main")
+    if merge_base:
+        return merge_base.strip()
+    log.warning("could not find merge-base with origin/main, comparing against HEAD")
+    return "HEAD"
+
+
+def final_at(org: str, base: str) -> set[str]:
+    """The entries in final.txt at a git ref; empty if it doesn't exist there."""
+    if _git("rev-parse", "--verify", "--quiet", f"{base}^{{commit}}") is None:
+        if base != "HEAD":
+            raise AllowlistError(f"{base!r} is not a valid git ref")
+        log.warning("not in a git repo with commits, treating all entries as added")
+        return set()
+    text = _git("show", f"{base}:./{final_txt_path(org)}")
+    if text is None:
+        log.warning(f"{final_txt_path(org)} does not exist at {base}, treating all entries as added")
+        return set()
+    return parse_final_txt(text)

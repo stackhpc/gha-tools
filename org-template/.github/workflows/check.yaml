@@ -1,0 +1,11 @@
+---
+name: Check allowlist
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    uses: stackhpc/gha-tools/.github/workflows/check.yml@main
+    with:
+      org: "@ORG@"

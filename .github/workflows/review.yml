@@ -2,10 +2,8 @@
 name: Review allowlist
 
 # Reusable workflow for an organisation's allowlist repo (e.g. stackhpc/gha-stackhpc).
-# Runs `gha review --force --no-ai ORG`: a fresh review of every entry in ORG.final.txt
-# (ignoring ORG.review.txt, which is overwritten in this checkout only, and not committed),
-# failing if any are known-vulnerable. The AI review of each action's source is not run here:
-# it is done when an action is added, not nightly.
+# Runs `gha review ORG` over every entry in ORG.final.txt, and fails if any
+# are known-vulnerable.
 # Example of an action which calls this one is at
 # https://github.com/stackhpc/gha-tools/blob/main/org-template/.github/workflows/review.yaml
 
@@ -44,14 +42,12 @@ jobs:
           prune-cache: true
           cache-python: true
 
-      # --force: review every entry, not just those without a review in ORG.review.txt.
-      # --no-ai: the AI review needs the claude CLI and an API key, and is not for the nightly run.
-      # gha exits 1 if any are known-vulnerable.
+      # No --base: review every entry. gha exits 1 if any are known-vulnerable.
       - name: Review allowlist
         env:
           ORG: ${{ inputs.org }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: uv run --frozen gha review --force --no-ai "$ORG"
+        run: uv run --frozen gha review "$ORG"
 
       # Failures only. This includes install/infrastructure errors, not just
       # known-vulnerable findings. Uses curl rather than a third-party action.

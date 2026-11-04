@@ -1,0 +1,14 @@
+---
+name: AI review of added actions
+on:
+  pull_request:
+  workflow_dispatch:  # reviews every entry, not just those added
+permissions:
+  contents: read
+jobs:
+  ai-review:
+    uses: stackhpc/gha-tools/.github/workflows/ai-review.yml@main
+    with:
+      org: "@ORG@"
+    secrets:
+      anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}

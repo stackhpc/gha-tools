@@ -1,0 +1,88 @@
+---
+name: AI review of added actions
+
+# Reusable workflow for an organisation's allowlist repo (e.g. stackhpc/gha-stackhpc).
+# On a pull request, runs `gha review --ai --base origin/<target branch> ORG`: the usual review, plus an
+# AI review of the source of each entry which the PR adds to ORG.final.txt, looking for signs of compromise.
+# On any other event (e.g. workflow_dispatch) it reviews every entry in ORG.final.txt.
+# All entries are reviewed before the job fails, if any fail the review.
+# This is not meant to be a required check, so a PR can still be merged if it fails.
+# Example of an action which calls this one is at
+# https://github.com/stackhpc/gha-tools/blob/main/org-template/.github/workflows/ai-review.yaml
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: Name of the GitHub organisation, i.e. the prefix of ORG.final.txt
+        type: string
+        required: true
+      claude_version:
+        description: Version of the @anthropic-ai/claude-code npm package to install
+        type: string
+        default: "2.1.287"
+    secrets:
+      anthropic_api_key:
+        description: Anthropic API key. Without one (e.g. for PRs from forks) the review is skipped, with a warning.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  ai-review:
+    name: AI review ${{ inputs.org }} allowlist
+    runs-on: ubuntu-latest
+    timeout-minutes: 240  # each entry can take several minutes
+    steps:
+      # Only this step has the key in its environment, so it is not seen by the actions below:
+      - name: Check for API key
+        id: key
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
+        run: |
+          if [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::warning::No anthropic_api_key available (e.g. this is a PR from a fork): NOT running the AI review"
+            echo "present=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        if: steps.key.outputs.present == 'true'
+        with:
+          # `gha review --base` compares ORG.final.txt with its content at another commit, which needs history:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up uv
+        if: steps.key.outputs.present == 'true'
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          prune-cache: true
+          cache-python: true
+
+      # Installed in the runner's temp directory, not globally, so no sudo is needed:
+      - name: Install claude CLI
+        if: steps.key.outputs.present == 'true'
+        env:
+          CLAUDE_VERSION: ${{ inputs.claude_version }}
+        run: |
+          npm install --prefix "$RUNNER_TEMP/claude" --no-audit --no-fund "@anthropic-ai/claude-code@$CLAUDE_VERSION"
+          echo "GHA_AI_CLAUDE=$RUNNER_TEMP/claude/node_modules/.bin/claude" >> "$GITHUB_ENV"
+
+      # gha exits 1 at the end, once all entries have been reviewed, if any fail.
+      - name: AI review
+        if: steps.key.outputs.present == 'true'
+        env:
+          ORG: ${{ inputs.org }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
+          BASE_REF: ${{ github.base_ref }}  # empty unless a pull request
+        run: |
+          if [ -n "$BASE_REF" ]; then
+            uv run --frozen gha review --ai --base "origin/$BASE_REF" "$ORG"
+          else
+            uv run --frozen gha review --ai "$ORG"
+          fi

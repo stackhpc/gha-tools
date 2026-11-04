@@ -26,7 +26,6 @@ from .github import GitHubAPI
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = 1
 CLEAN = "CLEAN"
 SUSPICIOUS = "SUSPICIOUS"
 ERROR = "ERROR"

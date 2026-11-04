@@ -212,3 +212,76 @@ def test_write_and_read_final(tmp_path, monkeypatch):
 def git(cwd, *args):
     subprocess.run(["git", "-c", "user.name=t", "-c", "user.email=t@t", *args], cwd=cwd, check=True,
                    capture_output=True)
+
+
+@pytest.fixture
+def repo(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    git(tmp_path, "init", "-q", "-b", "main")
+    (tmp_path / "README").write_text("x")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-q", "-m", "init")
+    return tmp_path
+
+
+def test_final_at(repo):
+    sub = repo / "orgs"
+    sub.mkdir()
+    (sub / "org.final.txt").write_text("a/a@v1,\nb/b@v2,\n")
+    git(repo, "add", ".")
+    git(repo, "commit", "-q", "-m", "add")
+    (sub / "org.final.txt").write_text("a/a@v1,\n")
+    # paths are relative to the current directory, not the repo root:
+    import os
+    os.chdir(sub)
+    assert allowlist.final_at("org", "HEAD") == {"a/a@v1", "b/b@v2"}
+    assert allowlist.final_at("org", "HEAD~1") == set()  # didn't exist then
+    with pytest.raises(AllowlistError, match="not a valid git ref"):
+        allowlist.final_at("org", "nope")
+
+
+def test_default_base(repo, caplog):
+    with caplog.at_level(logging.WARNING):
+        assert allowlist.default_base() == "HEAD"  # no origin/main
+    assert "could not find merge-base" in caplog.text
+
+    head = subprocess.run(["git", "rev-parse", "HEAD"], capture_output=True, text=True).stdout.strip()
+    git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
+    git(repo, "checkout", "-q", "-b", "feature")
+    git(repo, "commit", "-q", "--allow-empty", "-m", "feature work")
+    assert allowlist.default_base() == head
+
+
+def test_no_git_repo(tmp_path, monkeypatch, caplog):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GIT_CEILING_DIRECTORIES", str(tmp_path.parent))
+    with caplog.at_level(logging.WARNING):
+        assert allowlist.default_base() == "HEAD"
+        assert allowlist.final_at("org", "HEAD") == set()
+    assert "not in a git repo" in caplog.text
+
+
+def test_walk_local_ref_in_external_composite_is_not_walked(graph, caplog):
+    # e.g. pypa/gh-action-pypi-publish, which generates a local action at runtime:
+    graph.files[("ext", "dep", "action.yml", "v3")] = """
+        runs:
+          using: composite
+          steps:
+            - uses: ./.github/.tmp/generated
+    """
+    # without an org, it is resolved against ext/dep, so is unresolved:
+    with pytest.raises(AllowlistError, match=r"ext/dep/\.github/\.tmp/generated@v3 \[unresolved\]"):
+        allowlist.walk(Walker(":memory:", api=graph), ENTRIES)
+
+    walker = Walker(":memory:", api=graph, org="MyOrg")  # org matching is case-insensitive
+    with caplog.at_level(logging.WARNING):
+        allowlist.walk(walker, ENTRIES)
+    nodes = {n["node_id"]: n for n in walker.export_nodes()}
+    assert nodes["local:./.github/.tmp/generated"]["status"] == "done"
+    assert "ext/dep/.github/.tmp/generated@v3" not in nodes
+    assert "myorg/tool/sub@main" in nodes  # local refs in internal composite actions are still walked
+    assert any("ext/dep@v3 uses ./.github/.tmp/generated" in r.getMessage() for r in caplog.records)
+    # and it's not in the allowlist:
+    assert list(allowlist.build_final(walker, ENTRIES, "myorg")) == [
+        f"ext/a@{SHA_A}", "ext/deep@main", "ext/dep@v3", f"ext/via-org@{SHA_B}",
+    ]
