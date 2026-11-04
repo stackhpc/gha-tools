@@ -70,7 +70,7 @@ When a PR is opened two workflows run:
   allowlist, looking for signs that it is malicious or compromised. This is not a required check.
   If it fails, look at the findings in its log before merging. See the
   [AI review section of stackhpc/gha-tools README.md](https://github.com/stackhpc/gha-tools/blob/main/README.md#ai-review).
-  It needs the repository secret `ANTHROPIC_API_KEY`. It can also be run manually (with
+  It needs the repository secret `CLAUDE_CODE_OAUTH_TOKEN`, a token from `claude setup-token`. It can also be run manually (with
   `workflow_dispatch`) to review every action in the allowlist.
 
 ## Usage for organisation maintenance

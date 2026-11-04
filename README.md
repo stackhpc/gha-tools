@@ -210,8 +210,10 @@ e.g. inability to read minified javascript.
 
 The following environment variables affect the AI review:
 - `GHA_AI_MODEL`: Model to use
-- `GHA_AI_MAX_BUDGET_USD`: Per-action cost limit, default 3
 - `GHA_AI_CLAUDE`: Path to the `claude` CLI
+
+The `claude` CLI must be authenticated, e.g. by logging in, or in CI with `CLAUDE_CODE_OAUTH_TOKEN`
+(a long-lived token from `claude setup-token`) or `ANTHROPIC_API_KEY`.
 
 The tests in `tests/test_aireview_live.py` run the real reviewer on synthetic clean and compromised
 bundles: `GHA_AI_LIVE=1 pytest tests/test_aireview_live.py -s`.
@@ -287,13 +289,14 @@ All of them are reviewed before the job fails, if any fail. It is not intended t
 that a PR can still be merged if the AI review is wrong. On any other event, e.g. `workflow_dispatch`, all
 entries are reviewed; this is how to review an existing allowlist. Inputs: `org` (required) and
 `claude_version` (the `@anthropic-ai/claude-code` npm package version to install, which is pinned in the
-workflow). The secret `anthropic_api_key` is needed; without it (e.g. in PRs from forks) the job is skipped
+workflow). The secret `claude_code_oauth_token` (a token from `claude setup-token`, which needs a Claude subscription)
+is needed; without it (e.g. in PRs from forks) the job is skipped
 with a warning.
 
 > [!NOTE]
 > The AI review job runs `gha` from the repository's `uv.lock`, in a workflow which the PR itself can
-> change, with the API key available. So anyone who can open a PR in the repository (not from a fork) can
-> read the key. That is the usual limitation of secrets in `pull_request` workflows; use `CODEOWNERS` for `.github/` and
+> change, with the token available. So anyone who can open a PR in the repository (not from a fork) can
+> read the token. That is the usual limitation of secrets in `pull_request` workflows; use `CODEOWNERS` for `.github/` and
 > `uv.lock` if that matters. Also the `claude` CLI is installed with `npm install` without a lockfile, so
 > only its top-level version is pinned.
 

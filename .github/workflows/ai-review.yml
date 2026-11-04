@@ -22,8 +22,10 @@ on:
         type: string
         default: "2.1.287"
     secrets:
-      anthropic_api_key:
-        description: Anthropic API key. Without one (e.g. for PRs from forks) the review is skipped, with a warning.
+      claude_code_oauth_token:
+        description: >-
+          Long-lived Claude Code OAuth token, from `claude setup-token` (needs a Claude subscription).
+          Without one (e.g. for PRs from forks) the review is skipped, with a warning.
         required: false
 
 permissions:
@@ -35,14 +37,14 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 240  # each entry can take several minutes
     steps:
-      # Only this step has the key in its environment, so it is not seen by the actions below:
-      - name: Check for API key
+      # Only this step has the token in its environment, so it is not seen by the actions below:
+      - name: Check for token
         id: key
         env:
-          ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token }}
         run: |
-          if [ -z "$ANTHROPIC_API_KEY" ]; then
-            echo "::warning::No anthropic_api_key available (e.g. this is a PR from a fork): NOT running the AI review"
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ]; then
+            echo "::warning::No claude_code_oauth_token available (e.g. this is a PR from a fork): NOT running the AI review"
             echo "present=false" >> "$GITHUB_OUTPUT"
           else
             echo "present=true" >> "$GITHUB_OUTPUT"
@@ -78,7 +80,7 @@ jobs:
         env:
           ORG: ${{ inputs.org }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          ANTHROPIC_API_KEY: ${{ secrets.anthropic_api_key }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.claude_code_oauth_token }}
           BASE_REF: ${{ github.base_ref }}  # empty unless a pull request
         run: |
           if [ -n "$BASE_REF" ]; then

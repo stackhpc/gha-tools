@@ -123,7 +123,6 @@ def _claude_command(prompt: str) -> list[str]:
         "--permission-mode", "dontAsk",
         "--no-session-persistence",
         "--setting-sources", "",
-        "--max-budget-usd", os.environ.get("GHA_AI_MAX_BUDGET_USD", "3"),
     ]
     if model := os.environ.get("GHA_AI_MODEL"):
         cmd += ["--model", model]
