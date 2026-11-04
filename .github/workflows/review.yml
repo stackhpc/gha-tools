@@ -44,6 +44,7 @@ jobs:
 
       # No --base: review every entry. gha exits 1 if any are known-vulnerable.
       - name: Review allowlist
+        id: review
         env:
           ORG: ${{ inputs.org }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -59,11 +60,19 @@ jobs:
           REPO: ${{ github.repository }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           EVENT: ${{ github.event_name }}
+          FAILED: ${{ steps.review.outputs.failed-uses }}
         run: |
           if [ -z "$SLACK_WEBHOOK_URL" ]; then
             echo "No slack_webhook_url provided, not notifying."
             exit 0
           fi
-          jq -n --arg text ":rotating_light: GitHub Actions allowlist review failed for *$ORG* ($REPO, $EVENT): <$RUN_URL|view run>" \
+          text=":rotating_light: GitHub Actions allowlist review failed for *$ORG* ($REPO, $EVENT): <$RUN_URL|view run>"
+          if [ -n "$FAILED" ]; then
+            text+=$'\n'"Failed actions:"
+            while IFS= read -r uses; do
+              text+=$'\n'"- \`$uses\`"
+            done <<< "$FAILED"
+          fi
+          jq -n --arg text "$text" \
             '{text: $text}' \
             | curl --fail --silent --show-error -X POST -H 'Content-type: application/json' --data @- "$SLACK_WEBHOOK_URL"

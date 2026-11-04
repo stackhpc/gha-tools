@@ -115,6 +115,47 @@ def test_review_org_base_nothing_added(org_files, reviewed, monkeypatch, capsys)
     assert "Nothing to review." in out and "No added entries." in out and "No removed entries." in out
 
 
+def test_is_github_actions(monkeypatch):
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+    assert not review.is_github_actions()
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    assert review.is_github_actions()
+
+
+def test_write_github_output_lists_failed(monkeypatch, tmp_path):
+    out = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    review.write_github_output(["a/a@v1", "b/b@v2"])
+    assert out.read_text() == "failed<<GHA_EOF\na/a@v1\nb/b@v2\nGHA_EOF\n"
+
+
+def test_write_github_output_not_in_actions(monkeypatch, tmp_path):
+    out = tmp_path / "output"
+    monkeypatch.delenv("GITHUB_RUN_ID", raising=False)
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    review.write_github_output(["a/a@v1"])
+    assert not out.exists()
+
+
+def test_review_org_writes_github_output_if_vulnerable(org_files, reviewed, monkeypatch, tmp_path):
+    out = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    org_files(["a/a@v1", "vuln/x@v3"])
+    assert review.review_org(None, "org") == 1
+    assert out.read_text() == "failed<<GHA_EOF\nvuln/x@v3\nGHA_EOF\n"
+
+
+def test_review_org_no_github_output_if_clean(org_files, reviewed, monkeypatch, tmp_path):
+    out = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    org_files(["a/a@v1"])
+    assert review.review_org(None, "org") == 0
+    assert not out.exists()
+
+
 def test_review_warns_when_zizmor_offline(monkeypatch, reviewed, caplog):
     monkeypatch.setenv("ZIZMOR_OFFLINE", "true")
     review.review(None, {"a/a@v1": {}})
