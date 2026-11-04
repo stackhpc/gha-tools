@@ -1,4 +1,5 @@
-"""`gha review`: check allowlisted actions for known vulnerabilities, weak refs, mutability and zizmor findings."""
+"""`gha review`: check allowlisted actions for known vulnerabilities, weak refs, mutability and zizmor findings,
+and optionally (by AI) for signs of compromise."""
 
 from __future__ import annotations
 
@@ -7,6 +8,7 @@ import logging
 import os
 import re
 import sys
+from dataclasses import dataclass
 from importlib import resources
 from pathlib import Path
 from subprocess import run
@@ -14,8 +16,9 @@ from typing import Optional
 
 import yaml
 
+from ..aireview import ERROR, SKIPPED, SUSPICIOUS, AIReviewError, ai_review, format_verdict
 from ..allowlist import final_at, read_final
-from ..github import GitHubAPI, NotFound, get_action_metadata
+from ..github import GitHubAPI, GitHubAPIError, NotFound, get_action_metadata
 from ..identity import is_full_sha, resolve_uses
 
 log = logging.getLogger(__name__)
@@ -122,7 +125,29 @@ def review_action_metadata(api: GitHubAPI, owner: str, repo: str, path: str, ref
         raise ValueError(using)
 
 
-def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], disabled: set[str]) -> None:
+class EntryError(Exception):
+    """An entry which could not be reviewed (as opposed to one which failed review)."""
+
+
+@dataclass
+class EntryReview:
+    """The result of reviewing one entry."""
+    vulnerable: bool = False  # known-vulnerable, according to zizmor
+    ai: Optional[str] = None  # AI review outcome (CLEAN, SUSPICIOUS, ERROR, SKIPPED), None if not run
+    error: Optional[str] = None  # why the entry could not be reviewed
+
+    @property
+    def ai_failed(self) -> bool:
+        return self.ai in (SUSPICIOUS, ERROR)
+
+    @property
+    def failed(self) -> bool:
+        return self.vulnerable or self.ai_failed or self.error is not None
+
+
+def review_entry(
+    api: GitHubAPI, uses: str, info: dict, findings: list[dict], disabled: set[str], ai: bool = False,
+) -> EntryReview:
     ident = resolve_uses(uses)
     owner, repo, path, ref = ident.owner, ident.repo, ident.path, ident.ref
     version = info.get("version") or ""
@@ -133,6 +158,7 @@ def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], di
         print(f"  WARNING weak reference: {info.get('ref_source') or 'not a SHA'}")
     for finding in findings:
         print(f"  {'FAIL' if finding['ident'] == KNOWN_VULNERABLE else 'WARNING'} {format_finding(finding)}")
+    result = EntryReview(vulnerable=any(f["ident"] == KNOWN_VULNERABLE for f in findings))
 
     # Check version for mutability:
     if not version:
@@ -151,7 +177,7 @@ def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], di
         try:
             content = get_action_metadata(api, owner, repo, path, fetch_ref)
         except NotFound:
-            sys.exit(f"  FATAL no action metadata file found for {owner}/{repo}/{path}@{fetch_ref}")
+            raise EntryError(f"no action metadata file found for {owner}/{repo}/{path}@{fetch_ref}")
         review_action_metadata(api, owner, repo, path, fetch_ref, content)
 
     # Run a limited zizmor scan on JUST the action.y{a,}ml / workflow file:
@@ -159,21 +185,44 @@ def review_entry(api: GitHubAPI, uses: str, info: dict, findings: list[dict], di
         if finding["ident"] not in disabled:
             print(f"  {format_finding(finding)}")
 
+    if not ai:
+        return result
+    if not is_full_sha(ref):  # NOT fetch_ref: a mutable ref is not reviewed, even if resolved to a sha
+        result.ai = SKIPPED
+        print(f"  AI review: {SKIPPED}: unpinned")
+        return result
+    try:
+        verdict = ai_review(api, owner, repo, path, fetch_ref, ident.kind)
+    except AIReviewError as e:
+        result.ai = ERROR
+        print(f"  AI review: {ERROR}: {' '.join(str(e).split())}")
+        return result
+    result.ai = verdict["verdict"]
+    print("\n".join(format_verdict(verdict)), flush=True)
+    return result
 
-def review(api: GitHubAPI, entries: dict[str, dict]) -> list[str]:
-    """Review {uses: final.json info}. Returns the known-vulnerable entries."""
+
+def review(api: GitHubAPI, entries: dict[str, dict], ai: bool = False) -> dict[str, EntryReview]:
+    """Review {uses: final.json info}, returning {uses: result}. Every entry is reviewed even if some fail
+    or can't be reviewed, so that all the problems are reported."""
     if not entries:
         print("\nNothing to review.")
-        return []
+        return {}
     if os.environ.get("ZIZMOR_OFFLINE", "").lower() in ("1", "true", "yes"):
         log.warning("ZIZMOR_OFFLINE is set: known-vulnerable-actions and other online audits are NOT being run")
     disabled = _zizmor_disabled_rules()
     names = sorted(entries)
     print(f"\nRunning zizmor against {len(names)} entries ...")
     findings = batch_zizmor(names, disabled)
+    results = {}
     for uses in names:
-        review_entry(api, uses, entries[uses], findings[uses], disabled)
-    return [uses for uses in names if any(f["ident"] == KNOWN_VULNERABLE for f in findings[uses])]
+        try:
+            results[uses] = review_entry(api, uses, entries[uses], findings[uses], disabled, ai)
+        except (EntryError, GitHubAPIError) as e:
+            print(f"  FAIL could not review: {e}")
+            results[uses] = EntryReview(
+                vulnerable=any(f["ident"] == KNOWN_VULNERABLE for f in findings[uses]), error=str(e))
+    return results
 
 
 def is_github_actions() -> bool:
@@ -181,27 +230,45 @@ def is_github_actions() -> bool:
     return "GITHUB_RUN_ID" in os.environ
 
 
-def write_github_output(vulnerable: list[str]) -> None:
-    """When running in GitHub Actions, expose the failed entries as the `failed` step output."""
+def write_github_output(failed: list[str]) -> None:
+    """When running in GitHub Actions, expose the failed entries as the `failed-uses` step output."""
     if is_github_actions():
         output_path = os.environ.get("GITHUB_OUTPUT", "/dev/stdout")
         with open(output_path, "a") as f:
             # Use HEREDOC style so that we can put a multi-line sting into GITHUB_OUTPUT
             print("failed-uses<<GHA_EOF", file=f)
-            for use in vulnerable:
+            for use in failed:
                 print(f"{use}", file=f)
             print("GHA_EOF", file=f)
 
 
-def review_org(api: GitHubAPI, org: str, base: Optional[str] = None) -> int:
+def report_failures(results: dict[str, EntryReview]) -> int:
+    """Print the entries which failed review. Returns an exit status: 1 if there are any."""
+    failed = [uses for uses, r in results.items() if r.failed]
+    if failed:
+        write_github_output(failed)
+    for heading, failing in (
+        ("known-vulnerable entries", [uses for uses, r in results.items() if r.vulnerable]),
+        ("entries which could not be reviewed", [uses for uses, r in results.items() if r.error is not None]),
+        ("entries failing AI review", [uses for uses, r in results.items() if r.ai_failed]),
+    ):
+        if failing:
+            print(f"\nFAIL: {heading}:")
+            for uses in failing:
+                print(f"  {uses}")
+    return 1 if failed else 0
+
+
+def review_org(api: GitHubAPI, org: str, base: Optional[str] = None, ai: bool = False) -> int:
     """Review all of an org's final.txt, or (with base) only entries added
-    since that git ref. Returns an exit status: 1 if any reviewed entry is
-    known-vulnerable."""
+    since that git ref. Returns an exit status: 1 if any reviewed entry fails."""
     current, info = read_final(org)
-    return review_final(api, org, current, info, base)
+    return review_final(api, org, current, info, base, ai)
 
 
-def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: Optional[str] = None) -> int:
+def review_final(
+    api: GitHubAPI, org: str, current: set[str], info: dict, base: Optional[str] = None, ai: bool = False,
+) -> int:
     """As review_org, but for final.txt entries and final.json info which
     have not necessarily been written yet."""
     removed: set[str] = set()
@@ -213,7 +280,7 @@ def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: 
         removed = previous - current
         print(f"Comparing against {base}: {len(to_review)} added, {len(removed)} removed")
 
-    vulnerable = review(api, {uses: info.get(uses, {}) for uses in to_review})
+    results = review(api, {uses: info.get(uses, {}) for uses in to_review}, ai)
 
     if base is not None:
         print("\nAdded entries:" if to_review else "\nNo added entries.")
@@ -222,19 +289,13 @@ def review_final(api: GitHubAPI, org: str, current: set[str], info: dict, base: 
         print("\nRemoved entries (these are dropped when ORG.final.txt is pasted into the GitHub UI):" if removed else "\nNo removed entries.")
         for uses in sorted(removed):
             print(f"  - {uses}")
-    if vulnerable:
-        write_github_output(vulnerable)
-        print("\nFAIL: known-vulnerable entries:")
-        for uses in vulnerable:
-            print(f"  {uses}")
-        return 1
-    return 0
+    return report_failures(results)
 
 
-def review_single(api: GitHubAPI, target: str) -> int:
+def review_single(api: GitHubAPI, target: str, ai: bool = False) -> int:
     """Review a single action@ref, without its dependencies."""
     ident = resolve_uses(target)
     if ident.kind not in ("action", "reusable_workflow"):
         sys.exit(f"FATAL: {target!r} is not owner/repo[/path]@ref")
     info = {} if is_full_sha(ident.ref) else {"version": ident.ref}
-    return 1 if review(api, {target: info}) else 0
+    return report_failures(review(api, {target: info}, ai))

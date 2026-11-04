@@ -1,0 +1,64 @@
+---
+name: Check allowlist
+
+# Reusable workflow for an organisation's allowlist repo (e.g. stackhpc/gha-stackhpc), to run on pull requests.
+# Checks that whoever made the PR actually ran `gha update ORG`, rather than e.g. copying ORG.actions.txt
+# to ORG.final.txt, by running it and checking that:
+# - the review of the entries added by the PR (not including the AI review) passes, and
+# - ORG.final.txt is as generated, i.e. it is unchanged by running `gha update ORG`.
+# Example of an action which calls this one is at
+# https://github.com/stackhpc/gha-tools/blob/main/org-template/.github/workflows/check.yaml
+
+on:
+  workflow_call:
+    inputs:
+      org:
+        description: Name of the GitHub organisation, i.e. the prefix of ORG.final.txt
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check ${{ inputs.org }} allowlist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # `gha update` reviews the entries added since the merge-base with origin/main, which needs history:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check origin/main is available
+        run: |
+          if ! git rev-parse --verify --quiet origin/main > /dev/null; then
+            echo "::error::origin/main not found, so the entries added by this PR cannot be determined"
+            exit 1
+          fi
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          enable-cache: true
+          prune-cache: true
+          cache-python: true
+
+      # Fails if the review of the added entries fails, or dependencies can't be resolved:
+      - name: Run gha update
+        env:
+          ORG: ${{ inputs.org }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: uv run --frozen gha update "$ORG"
+
+      # Only ORG.final.txt: jsondata/ORG.final.json can change without anyone touching the allowlist, as it
+      # includes the tags and (for mutable refs) the commits which things currently resolve to.
+      - name: Check ORG.final.txt is up to date
+        env:
+          ORG: ${{ inputs.org }}
+        run: |
+          if ! git diff --exit-code -- "$ORG.final.txt"; then
+            echo "::error::$ORG.final.txt is not what 'gha update $ORG' generates. Run it and commit the result."
+            exit 1
+          fi

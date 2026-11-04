@@ -1,0 +1,14 @@
+---
+name: AI review of added actions
+on:
+  pull_request:
+  workflow_dispatch:  # reviews every entry, not just those added
+permissions:
+  contents: read
+jobs:
+  ai-review:
+    uses: stackhpc/gha-tools/.github/workflows/ai-review.yml@main
+    with:
+      org: "@ORG@"
+    secrets:
+      claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}

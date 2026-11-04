@@ -5,6 +5,7 @@ import json
 import pytest
 
 from gha_tools.allowlist import ActionEntry
+from gha_tools.github import GitHubAPIError
 from gha_tools.commands import review, update
 
 SHA_A = "a" * 40
@@ -55,8 +56,9 @@ def reviewed(monkeypatch):
         return {e: [finding("known-vulnerable-actions", i)] if e.startswith("vuln/") else []
                 for i, e in enumerate(entries)}
 
-    def fake_review_entry(api, uses, info, findings, disabled):
+    def fake_review_entry(api, uses, info, findings, disabled, ai=False):
         calls.append((uses, info))
+        return review.EntryReview(vulnerable=bool(findings))
 
     monkeypatch.setattr(review, "batch_zizmor", fake_batch)
     monkeypatch.setattr(review, "review_entry", fake_review_entry)
@@ -127,7 +129,7 @@ def test_write_github_output_lists_failed(monkeypatch, tmp_path):
     monkeypatch.setenv("GITHUB_RUN_ID", "123")
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     review.write_github_output(["a/a@v1", "b/b@v2"])
-    assert out.read_text() == "failed<<GHA_EOF\na/a@v1\nb/b@v2\nGHA_EOF\n"
+    assert out.read_text() == "failed-uses<<GHA_EOF\na/a@v1\nb/b@v2\nGHA_EOF\n"
 
 
 def test_write_github_output_not_in_actions(monkeypatch, tmp_path):
@@ -144,7 +146,21 @@ def test_review_org_writes_github_output_if_vulnerable(org_files, reviewed, monk
     monkeypatch.setenv("GITHUB_OUTPUT", str(out))
     org_files(["a/a@v1", "vuln/x@v3"])
     assert review.review_org(None, "org") == 1
-    assert out.read_text() == "failed<<GHA_EOF\nvuln/x@v3\nGHA_EOF\n"
+    assert out.read_text() == "failed-uses<<GHA_EOF\nvuln/x@v3\nGHA_EOF\n"
+
+
+def test_report_failures_writes_all_failed_entries_to_github_output(monkeypatch, tmp_path):
+    out = tmp_path / "output"
+    monkeypatch.setenv("GITHUB_RUN_ID", "123")
+    monkeypatch.setenv("GITHUB_OUTPUT", str(out))
+    assert review.report_failures({
+        "a/a@v1": review.EntryReview(ai="CLEAN"),
+        "b/b@v2": review.EntryReview(vulnerable=True),
+        "c/c@v3": review.EntryReview(error="no action metadata file found"),
+        "d/d@v4": review.EntryReview(ai="SUSPICIOUS"),
+        "e/e@v5": review.EntryReview(ai="SKIPPED"),
+    }) == 1
+    assert out.read_text() == "failed-uses<<GHA_EOF\nb/b@v2\nc/c@v3\nd/d@v4\nGHA_EOF\n"
 
 
 def test_review_org_no_github_output_if_clean(org_files, reviewed, monkeypatch, tmp_path):
@@ -233,3 +249,59 @@ def test_update_vulnerable_leaves_files_untouched(org_files, reviewed, monkeypat
     monkeypatch.setattr(review, "final_at", lambda org, base: {"a/a@v1"})
     assert update.update(None, "org") == 1
     assert (open("org.final.txt").read(), open("jsondata/org.final.json").read()) == before
+
+
+# -- running to completion, and --ai --------------------------------------------
+
+def test_review_continues_after_an_entry_cannot_be_reviewed(monkeypatch, capsys):
+    monkeypatch.setattr(review, "batch_zizmor", lambda entries, disabled: {e: [] for e in entries})
+    monkeypatch.setattr(review, "_zizmor_disabled_rules", lambda: set())
+    seen = []
+
+    def fake_review_entry(api, uses, info, findings, disabled, ai=False):
+        seen.append(uses)
+        if uses == "b/b@v2":
+            raise review.EntryError("no action metadata file found for b/b@v2")
+        if uses == "c/c@v3":
+            raise GitHubAPIError("rate limited")
+        return review.EntryReview(ai="SUSPICIOUS" if uses == "d/d@v4" else "CLEAN")
+
+    monkeypatch.setattr(review, "review_entry", fake_review_entry)
+    results = review.review(None, {u: {} for u in ["a/a@v1", "b/b@v2", "c/c@v3", "d/d@v4", "e/e@v5"]}, ai=True)
+    assert seen == ["a/a@v1", "b/b@v2", "c/c@v3", "d/d@v4", "e/e@v5"]  # all reviewed
+    assert results["b/b@v2"].error and results["c/c@v3"].error == "rate limited"
+    assert review.report_failures(results) == 1
+    out = capsys.readouterr().out
+    assert "FAIL could not review: no action metadata file found for b/b@v2" in out
+    assert "FAIL: entries which could not be reviewed:\n  b/b@v2\n  c/c@v3\n" in out
+    assert "FAIL: entries failing AI review:\n  d/d@v4\n" in out
+
+
+def test_report_failures():
+    assert review.report_failures({}) == 0
+    assert review.report_failures({"a": review.EntryReview(ai="CLEAN"), "b": review.EntryReview(ai="SKIPPED")}) == 0
+    assert review.report_failures({"a": review.EntryReview(vulnerable=True)}) == 1
+    assert review.report_failures({"a": review.EntryReview(ai="ERROR")}) == 1
+
+
+def test_review_org_ai_flag_and_base(org_files, monkeypatch):
+    seen = []
+    monkeypatch.setattr(review, "review", lambda api, entries, ai: seen.append((sorted(entries), ai)) or {})
+    monkeypatch.setattr(review, "final_at", lambda org, base: {"a/a@v1"})
+    org_files(["a/a@v1", "b/b@v2"])
+    review.review_org(None, "org")
+    review.review_org(None, "org", ai=True)
+    review.review_org(None, "org", "main", ai=True)
+    assert seen == [(["a/a@v1", "b/b@v2"], False), (["a/a@v1", "b/b@v2"], True), (["b/b@v2"], True)]
+
+
+def test_review_org_fails_if_ai_review_fails(org_files, monkeypatch, capsys):
+    monkeypatch.setattr(review, "batch_zizmor", lambda entries, disabled: {e: [] for e in entries})
+    monkeypatch.setattr(review, "_zizmor_disabled_rules", lambda: set())
+    monkeypatch.setattr(review, "review_entry", lambda api, uses, info, findings, disabled, ai: review.EntryReview(
+        ai="SUSPICIOUS" if uses.startswith("bad/") else "CLEAN"))
+    org_files(["a/a@v1", "bad/x@v1"])
+    assert review.review_org(None, "org", ai=True) == 1
+    assert "FAIL: entries failing AI review:\n  bad/x@v1\n" in capsys.readouterr().out
+    org_files(["a/a@v1"])
+    assert review.review_org(None, "org", ai=True) == 0

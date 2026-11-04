@@ -108,7 +108,11 @@ A GitHub token is needed, as both the walk and the review use the API.
 ### Scan subcommand
 
 Find every action and reusable workflow used by the active workflows in an org's repositories,
-including transitive dependencies.
+including transitive dependencies. This outputs:
+  - `jsondata/ORG.json`: Every action or reusable workflow from outside the org which is called, which
+    org repos call it, the refs at which they call it, and version information about those refs.
+  - `jsondata/ORG.calls.json`: The call chains for those actions/reusable workflows.
+  - On stdout: A suggested `ORG.actions.txt`, see [Setting up an organisation repo](#setting-up-an-organisation-repo)
 
 Usage:
 
@@ -153,14 +157,9 @@ for details.
 
 Review actions/reusable workflows.
 
-> [!IMPORTANT]
-> The review cannot determine whether the relevant actions are safe, but only
-> whether an action is known-vulnerable and whether it has mutability which
-> makes that determination weak.
-
 Usage:
 ```
-gha review [--base BASE] TARGET
+gha review [--base BASE] [--ai] TARGET
 ```
 
 where TARGET may be either:
@@ -174,25 +173,54 @@ there. Otherwise all actions in `ORG.final.txt` are reviewed.
 
 In either case the review includes transitive dependencies of directly-referenced actions/workflows.
 
-Specifically, it currently checks for and raises:
-- An error if an action is known-vulerable (via the GitHub Advisories database)
-- A warning if the action reference is weak, i.e. not SHA
-- A warning if no version is found for a SHA
-- A warning if no release is found for a version
-- A warning if a release is mutable
-- For docker actions, a warning if the image is not pinned to a SHA
-- For docker actions, a warning if the base image in the Dockerfile is not pinned to a SHA
-- For node actions, a warning if the entrypoint is not bundled (as this implies mutability)
+By default (no `--ai` option) the review checks for known-vulnerable actions/workflows and
+mutability which makes that determination weak. With `--ai` it uses also Claude to inspect the
+action/workflow source to look for signs of malicious or compromised code. Entries failing
+a review are listed and generate an exit status of 1.
 
-It also prints information on the type of action found.
+The default checks raise errors if:
+- An action/workflow is known to be vulnerable (via the GitHub Advisories database)
+- Review of an action/workflow cannot be completed
 
-Zizmor is used for the review in two ways:
+The default checks raise warnings if:
+- The reference is weak, i.e. not SHA
+- No version is found for a SHA
+- No release is found for a version
+- A release is mutable
+- For docker actions, the image is not pinned to a SHA
+- For docker actions, the base image in the Dockerfile is not pinned to a SHA
+- For node actions, the entrypoint is not bundled (as this implies mutability)
+
+Zizmor is used for the default review in two ways:
 - A "fake composite action" is constructed which `uses:` the relevant actions, and scanned with
   Zizmor to determine issues with the `uses:` themselves, i.e. known-vulnerable actions,
   unpinned refs etc.
 - Each action's "metadata file" (the actual `action.y*ml` file) is scanned with Zizmore to
   detect similar issues in the action itself.
-Other checks are from manual parsing of the metadata file.
+Other checks in the default review are from manual parsing of the metadata file.
+
+With the AI review, the [Claude prompt](src/gha_tools/aireview.py) looks for signs that the code is malicious
+or has been compromised: secret exfiltration, unexpected network calls, code downloaded or decoded and run at
+runtime, obfuscation, tampering with `GITHUB_ENV` etc. It does not report hygiene issues, which are covered
+by the other checks. The reviewer is only given read-only tools (`Read`, `Grep`, `Glob`) in a directory
+containing just the downloaded source, as that source is untrusted and may try to influence the review. The
+review for each action/workflow is summarised as:
+- `CLEAN`: Nothing concerning was found.
+- `SKIPPED`: The entry is not pinned to a SHA, so it is not reviewed.
+- `SUSPICIOUS`: Something was found which should be looked at, with the file and code.
+- `ERROR`: No usable result was obtained (e.g. `claude` is missing or not logged in).
+The last two raise an error. The AI review also outputs any limitations it has noticed in its review,
+e.g. inability to read minified javascript.
+
+The following environment variables affect the AI review:
+- `GHA_AI_MODEL`: Model to use
+- `GHA_AI_CLAUDE`: Path to the `claude` CLI
+
+The `claude` CLI must be authenticated, e.g. by logging in, or in CI with `CLAUDE_CODE_OAUTH_TOKEN`
+(a long-lived token from `claude setup-token`) or `ANTHROPIC_API_KEY`.
+
+The tests in `tests/test_aireview_live.py` run the real reviewer on synthetic clean and compromised
+bundles: `GHA_AI_LIVE=1 pytest tests/test_aireview_live.py -s`.
 
 ### Fix subcommand
 
@@ -246,6 +274,35 @@ Unlike `gha update` this reviews all entries rather than only those added on a b
 The workflow uses the gha version pinned in your uv.lock file.
 * If you would like to force an update to the pin, run `uv lock --upgrade`.
 * If you would like to prevent modification of `uv.lock` and use the pinned version, add `--frozen` when you invoke `uv run`.
+
+### Pull request workflows
+
+Two more reusable workflows are provided for an organisation repo to call on pull requests.
+They are separate as they do different jobs. Examples of callers are in `org-template/.github/workflows/`.
+
+`.github/workflows/check.yml` checks that whoever made a PR ran `gha update ORG`, and e.g. didn't just copy
+`ORG.actions.txt` to `ORG.final.txt` so that dependencies and known-vulnerable actions were missed. It
+runs `gha update ORG` (which reviews the entries added by the PR, without the AI review), and fails if
+that fails or if `ORG.final.txt` is changed by it. `jsondata/ORG.final.json` is not compared, as it can
+change without the allowlist changing. It needs the history of `origin/main`, so checks that out. Input:
+`org` (required).
+
+`.github/workflows/ai-review.yml` runs `gha review --ai --base origin/BRANCH ORG`, where `BRANCH` is the
+branch the PR is for, so the entries added to `ORG.final.txt` by the PR are reviewed including the AI review.
+All of them are reviewed before the job fails, if any fail. It is not intended to be a required check, so
+that a PR can still be merged if the AI review is wrong. On any other event, e.g. `workflow_dispatch`, all
+entries are reviewed; this is how to review an existing allowlist. Inputs: `org` (required) and
+`claude_version` (the `@anthropic-ai/claude-code` npm package version to install, which is pinned in the
+workflow). The secret `claude_code_oauth_token` (a token from `claude setup-token`, which needs a Claude subscription)
+is needed; without it (e.g. in PRs from forks) the job is skipped
+with a warning.
+
+> [!NOTE]
+> The AI review job runs `gha` from the repository's `uv.lock`, in a workflow which the PR itself can
+> change, with the token available. So anyone who can open a PR in the repository (not from a fork) can
+> read the token. That is the usual limitation of secrets in `pull_request` workflows; use `CODEOWNERS` for `.github/` and
+> `uv.lock` if that matters. Also the `claude` CLI is installed with `npm install` without a lockfile, so
+> only its top-level version is pinned.
 
 ## Actions file format
 

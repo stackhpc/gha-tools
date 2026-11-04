@@ -64,10 +64,14 @@ def main():
     parser_review = subparsers.add_parser(
         'review', help='review ORG.final.txt, or a selected action',
         description='Review all allowlist entries in ORG.final.txt (optionally only those added since '
-                    '--base), or a specific action@ref. Transitive dependencies are included.')
+                    '--base), or a specific action@ref. Transitive dependencies are included. '
+                    'With --ai also AI-reviews the source of each entry for signs of compromise.')
     parser_review.set_defaults(task="review", needs_token=True)
     parser_review.add_argument('target', help="name of GitHub organisation, or action@ref")
     parser_review.add_argument('--base', help="git ref: only review entries added to ORG.final.txt since this")
+    parser_review.add_argument(
+        '--ai', action='store_true',
+        help="also AI-review the source of each entry pinned to a SHA, which needs the claude CLI")
 
     args = parser.parse_args()
     api = None
@@ -94,8 +98,8 @@ def main():
             if "@" in args.target:
                 if args.base:
                     parser.error("--base is only valid when reviewing an organisation")
-                sys.exit(review_single(api, args.target))
-            sys.exit(review_org(api, args.target, args.base))
+                sys.exit(review_single(api, args.target, args.ai))
+            sys.exit(review_org(api, args.target, args.base, args.ai))
     except (Transient, AllowlistError) as e:
         sys.exit(f"FATAL: {e}")
 
