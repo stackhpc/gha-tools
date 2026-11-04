@@ -53,7 +53,6 @@ Other subcommands are provided to help maintain the organisations workflows and 
   check for known-vulerable actions/workflows and generate a final allowlist `ORG.final.txt`.
 - `gha review ORG`: Review all allowlist entries.
 - `gha review ACTION@REF` Review a specific action.
-- Both `gha review` forms take `--ai` to also have an AI look at the source for signs of compromise.
 - `gha fix ORG REPO ACTION[@REF]`: Clone a repo and rewrite its `uses:` of an
   action to the allowlisted ref.
 - `gha scan ORG`: Find every action used by the active workflows in an
@@ -154,12 +153,6 @@ for details.
 
 Review actions/reusable workflows.
 
-> [!IMPORTANT]
-> The review cannot determine whether the relevant actions are safe, but only
-> whether an action is known-vulnerable and whether it has mutability which
-> makes that determination weak. With `--ai` it also gives an AI-based opinion on whether
-> the source shows signs of compromise, which is not a guarantee either - see [AI review](#ai-review).
-
 Usage:
 ```
 gha review [--base BASE] [--ai] TARGET
@@ -176,63 +169,49 @@ there. Otherwise all actions in `ORG.final.txt` are reviewed.
 
 In either case the review includes transitive dependencies of directly-referenced actions/workflows.
 
-All the entries are reviewed even if some fail, or cannot be reviewed (e.g. an `action.yml` cannot be
-found). The failing entries are listed at the end, and the exit status is 1 if there are any.
-The results are only printed: nothing is read from or written to files.
+By default (no `--ai` option) the review checks for known-vulnerable actions/workflows and
+mutability which makes that determination weak. With `--ai` it uses also Claude to inspect the
+action/workflow source to look for signs of malicious or compromised code. Entries failing
+a review are listed and generate an exit status of 1.
 
-Specifically, it currently checks for and raises:
-- An error if an action is known-vulerable (via the GitHub Advisories database)
-- A warning if the action reference is weak, i.e. not SHA
-- A warning if no version is found for a SHA
-- A warning if no release is found for a version
-- A warning if a release is mutable
-- For docker actions, a warning if the image is not pinned to a SHA
-- For docker actions, a warning if the base image in the Dockerfile is not pinned to a SHA
-- For node actions, a warning if the entrypoint is not bundled (as this implies mutability)
+The default checks raise errors if:
+- An action/workflow is known to be vulnerable (via the GitHub Advisories database)
+- Review of an action/workflow cannot be completed
 
-It also prints information on the type of action found.
+The default checks raise warnings if:
+- The reference is weak, i.e. not SHA
+- No version is found for a SHA
+- No release is found for a version
+- A release is mutable
+- For docker actions, the image is not pinned to a SHA
+- For docker actions, the base image in the Dockerfile is not pinned to a SHA
+- For node actions, the entrypoint is not bundled (as this implies mutability)
 
-Zizmor is used for the review in two ways:
+Zizmor is used for the default review in two ways:
 - A "fake composite action" is constructed which `uses:` the relevant actions, and scanned with
   Zizmor to determine issues with the `uses:` themselves, i.e. known-vulnerable actions,
   unpinned refs etc.
 - Each action's "metadata file" (the actual `action.y*ml` file) is scanned with Zizmore to
   detect similar issues in the action itself.
-Other checks are from manual parsing of the metadata file.
+Other checks in the default review are from manual parsing of the metadata file.
 
-#### AI review
+With the AI review, the [Claude prompt](src/gha_tools/aireview.py) looks for signs that the code is malicious
+or has been compromised: secret exfiltration, unexpected network calls, code downloaded or decoded and run at
+runtime, obfuscation, tampering with `GITHUB_ENV` etc. It does not report hygiene issues, which are covered
+by the other checks. The reviewer is only given read-only tools (`Read`, `Grep`, `Glob`) in a directory
+containing just the downloaded source, as that source is untrusted and may try to influence the review. The
+review for each action/workflow is summarised as:
+- `CLEAN`: Nothing concerning was found.
+- `SKIPPED`: The entry is not pinned to a SHA, so it is not reviewed.
+- `SUSPICIOUS`: Something was found which should be looked at, with the file and code.
+- `ERROR`: No usable result was obtained (e.g. `claude` is missing or not logged in).
+The last two raise an error. The AI review also outputs any limitations it has noticed in its review,
+e.g. inability to read minified javascript.
 
-With `--ai`, each entry pinned to a full SHA is also reviewed by an AI, which downloads the repository
-at that SHA and runs the `claude` CLI over it (which must be installed and authenticated, e.g. by
-`ANTHROPIC_API_KEY`) to look for signs that the code is malicious or has been compromised: secret
-exfiltration, unexpected network calls, code downloaded or decoded and run at runtime, obfuscation, tampering
-with `GITHUB_ENV` etc. It does not report hygiene issues, which are covered by the other checks. It is not
-done by default, as it needs a `claude` login and is slow and costs money.
-
-The reviewer is only given read-only tools (`Read`, `Grep`, `Glob`) in a directory containing just
-the downloaded source, as that source is untrusted and may try to influence the review. The result for
-each entry is one of:
-
-- `CLEAN`: nothing concerning was found.
-- `SUSPICIOUS`: something was found which should be looked at, with the file and code. This fails the review.
-- `ERROR`: no usable result was obtained (e.g. `claude` is missing or not logged in). This fails the review.
-- `SKIPPED`: the entry is not pinned to a SHA, so it is not reviewed. This is only a warning.
-
-For example:
-
-```text
-  AI review: CLEAN
-    examined:    src/*.ts, action.yml, package.json; grepped dist/index.js for URLs and exec/eval
-    limitations: dist/index.js is minified and was only grepped, not read in full or rebuilt from
-                 source.
-```
-
-`limitations` matters: for example a minified bundle can only be partly read, so a `CLEAN` is not proof
-that an action is safe. The review will not detect everything, and it says nothing about what an action
-fetches later (e.g. a Docker base image which is not pinned to a digest).
-
-Environment variables: `GHA_AI_MODEL` (model to use), `GHA_AI_MAX_BUDGET_USD` (per-action cost limit,
-default 3) and `GHA_AI_CLAUDE` (path to the `claude` CLI).
+The following environment variables affect the AI review:
+- `GHA_AI_MODEL`: Model to use
+- `GHA_AI_MAX_BUDGET_USD`: Per-action cost limit, default 3
+- `GHA_AI_CLAUDE`: Path to the `claude` CLI
 
 The tests in `tests/test_aireview_live.py` run the real reviewer on synthetic clean and compromised
 bundles: `GHA_AI_LIVE=1 pytest tests/test_aireview_live.py -s`.
