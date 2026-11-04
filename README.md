@@ -108,7 +108,11 @@ A GitHub token is needed, as both the walk and the review use the API.
 ### Scan subcommand
 
 Find every action and reusable workflow used by the active workflows in an org's repositories,
-including transitive dependencies.
+including transitive dependencies. This outputs:
+  - `jsondata/ORG.json`: Every action or reusable workflow from outside the org which is called, which
+    org repos call it, the refs at which they call it, and version information about those refs.
+  - `jsondata/ORG.calls.json`: The call chains for those actions/reusable workflows.
+  - On stdout: A suggested `ORG.actions.txt`, see [Setting up an organisation repo](#setting-up-an-organisation-repo)
 
 Usage:
 
