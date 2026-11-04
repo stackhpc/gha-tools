@@ -225,18 +225,38 @@ def review(api: GitHubAPI, entries: dict[str, dict], ai: bool = False) -> dict[s
     return results
 
 
+def is_github_actions() -> bool:
+    """True if running inside a GitHub Actions workflow run (GITHUB_RUN_ID is set)."""
+    return "GITHUB_RUN_ID" in os.environ
+
+
+def write_github_output(failed: list[str]) -> None:
+    """When running in GitHub Actions, expose the failed entries as the `failed-uses` step output."""
+    if is_github_actions():
+        output_path = os.environ.get("GITHUB_OUTPUT", "/dev/stdout")
+        with open(output_path, "a") as f:
+            # Use HEREDOC style so that we can put a multi-line sting into GITHUB_OUTPUT
+            print("failed-uses<<GHA_EOF", file=f)
+            for use in failed:
+                print(f"{use}", file=f)
+            print("GHA_EOF", file=f)
+
+
 def report_failures(results: dict[str, EntryReview]) -> int:
     """Print the entries which failed review. Returns an exit status: 1 if there are any."""
-    for heading, failed in (
+    failed = [uses for uses, r in results.items() if r.failed]
+    if failed:
+        write_github_output(failed)
+    for heading, failing in (
         ("known-vulnerable entries", [uses for uses, r in results.items() if r.vulnerable]),
         ("entries which could not be reviewed", [uses for uses, r in results.items() if r.error is not None]),
         ("entries failing AI review", [uses for uses, r in results.items() if r.ai_failed]),
     ):
-        if failed:
+        if failing:
             print(f"\nFAIL: {heading}:")
-            for uses in failed:
+            for uses in failing:
                 print(f"  {uses}")
-    return 1 if any(r.failed for r in results.values()) else 0
+    return 1 if failed else 0
 
 
 def review_org(api: GitHubAPI, org: str, base: Optional[str] = None, ai: bool = False) -> int:
